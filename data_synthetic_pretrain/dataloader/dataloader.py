@@ -161,7 +161,6 @@ class SyntheticDataLoader:
             self.state["sampled_batches"] += 1
             yield (batch, deepcopy(self.state))
 
-
 def build_dataloader(
     synthetic_tasks_generation_args: SyntheticTasksGenerationArgs,
     synthetic_tasks_formatting_args: SyntheticTasksFormattingArgs,
@@ -180,4 +179,5 @@ def build_dataloader(
         weights=weights,
         formatting_args=synthetic_tasks_formatting_args,
     )
+    dataloader.generators = generators ### TODO: Lazy monkey patching here, fix this later
     return dataloader.produce_async_batches()

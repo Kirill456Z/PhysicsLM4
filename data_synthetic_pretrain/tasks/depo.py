@@ -56,7 +56,7 @@ class DepoRefactored(BaseSynteticTaskGenerator):
         num_hops = (
             np.random.randint(1, self.config.max_hops + 1, size=self.config.num_queries)
             if num_hops is None
-            else num_hops
+            else [num_hops]
         )
         num_query_nodes = (
             self.config.num_queries if num_query_nodes is None else num_query_nodes

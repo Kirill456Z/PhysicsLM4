@@ -19,12 +19,14 @@ import json
 import logging
 import os
 from pathlib import Path
+from dataclasses import is_dataclass
 #from lm_eval.api.instance import Instance
 #from lm_eval.api.model import LM
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Union
 #from lm_eval import simple_evaluate
 from omegaconf import OmegaConf
 import torch
+import wandb
 from apps.main.generate import (
     PackedCausalTransformerGenerator,
     PackedCausalTransformerGeneratorArgs,
@@ -187,6 +189,27 @@ def eval_on_synthetic_tasks(generator, task_generators: list[BaseSynteticTaskGen
     return all_metrics
 
 
+def _wandb_init_kwargs(wandb_cfg: Optional[Any]) -> dict[str, Any]:
+    if wandb_cfg is None:
+        return {}
+    if is_dataclass(wandb_cfg):
+        return asdict(wandb_cfg)
+    if isinstance(wandb_cfg, dict):
+        return dict(wandb_cfg)
+    return {}
+
+
+def _flatten_metrics(metrics: dict[str, Any], prefix: str) -> dict[str, Any]:
+    flat_metrics: dict[str, Any] = {}
+    for key, value in metrics.items():
+        metric_name = f"{prefix}{key}"
+        if isinstance(value, dict):
+            flat_metrics.update(_flatten_metrics(value, prefix=f"{metric_name}/"))
+        else:
+            flat_metrics[metric_name] = value
+    return flat_metrics
+
+
 def eval_on_val(generator, val_args: ValidationArgs, train_cfg):
     srcs = {}
     for src in val_args.sources:
@@ -256,6 +279,12 @@ def launch_eval(cfg: EvalArgs, task_generators: list[BaseSynteticTaskGenerator] 
 
     Path(cfg.dump_dir).mkdir(parents=True, exist_ok=True)
     dump_config(cfg, Path(cfg.dump_dir) / "config.yaml", log_config=False)
+    started_wandb_run = False
+    if get_global_rank() == 0 and wandb.run is None:
+        init_kwargs = _wandb_init_kwargs(cfg.wandb)
+        if init_kwargs:
+            wandb.init(**init_kwargs)
+            started_wandb_run = True
 
     consolidate_path = str(consolidate_path)
     torch.distributed.barrier()
@@ -277,6 +306,13 @@ def launch_eval(cfg: EvalArgs, task_generators: list[BaseSynteticTaskGenerator] 
     if task_generators is not None:
         val_results = eval_on_synthetic_tasks(generator, task_generators)
         logger.info(f"All evaluation results: {val_results}")
+        if get_global_rank() == 0 and val_results is not None and wandb.run is not None:
+            synthetic_metrics = _flatten_metrics(val_results, prefix="evals/synthetic/")
+            if synthetic_metrics:
+                if cfg.global_step is not None:
+                    wandb.log(synthetic_metrics, step=cfg.global_step)
+                else:
+                    wandb.log(synthetic_metrics)
     if get_global_rank() == 0:
         #with open(Path(cfg.dump_dir) / "results.json", "w") as f:
             #f.write(json.dumps(results))
@@ -309,6 +345,8 @@ def launch_eval(cfg: EvalArgs, task_generators: list[BaseSynteticTaskGenerator] 
             )
     
     del generator
+    if started_wandb_run and get_global_rank() == 0:
+        wandb.finish()
 
 
 def main():

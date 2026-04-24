@@ -279,8 +279,12 @@ def train(args: TrainArgs):
         
             if every_n_steps(train_state, 20, acc_step=0):
                 logger.info("batch observability")
-                logger.info(f"input_ids: {batch[0, :, 0]}")
-                logger.info(f"labels: {batch[0, :, 1]}")
+                # Temporarily set printoptions to show full tensor
+                with torch.set_printoptions(profile="full"):
+                    logger.info(f"input_ids: {batch[0, :, 0]}")
+                    logger.info(f"labels: {batch[0, :, 1]}")
+                torch.set_printoptions(profile="default")
+       
 
             if every_n_steps(train_state, args.gc_collect_freq, acc_step=0):
                 logger.info("garbage collection")

@@ -279,11 +279,11 @@ def train(args: TrainArgs):
         
             if every_n_steps(train_state, 20, acc_step=0):
                 logger.info("batch observability")
-                # Temporarily set printoptions to show full tensor
-                with torch.set_printoptions(profile="full"):
+                with torch.printoptions(
+                    threshold=float("inf"), linewidth=10_000
+                ):
                     logger.info(f"input_ids: {batch[0, :, 0]}")
                     logger.info(f"labels: {batch[0, :, 1]}")
-                torch.set_printoptions(profile="default")
        
 
             if every_n_steps(train_state, args.gc_collect_freq, acc_step=0):

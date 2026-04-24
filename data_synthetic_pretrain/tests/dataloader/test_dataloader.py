@@ -97,13 +97,13 @@ class TestSyntheticDataLoader:
             dataloader.formatting_args.seq_len,
             2,
         )
-        assert state.sampled_batches == 1
-        assert dataloader.state.sampled_batches == 1
+        assert state["sampled_batches"] == 1
+        assert dataloader.state["sampled_batches"] == 1
         it = iter(dataloader)
         _, state2 = next(it)
         _, state3 = next(it)
-        assert state2.sampled_batches == 2
-        assert state3.sampled_batches == 3
+        assert state2["sampled_batches"] == 2
+        assert state3["sampled_batches"] == 3
 
     def test_async_batched_batches_shape(self):
         fmt = SyntheticTasksFormattingArgs(
@@ -118,8 +118,8 @@ class TestSyntheticDataLoader:
         with loader.produce_async_batches() as it:
             batch, state = next(it)
         assert batch.shape == (4, 8, 2)
-        assert state.sampled_batches == 1
-        assert loader.state.sampled_batches == 1
+        assert state["sampled_batches"] == 1
+        assert loader.state["sampled_batches"] == 1
 
     def test_n_workers_must_be_positive(self):
         fmt = SyntheticTasksFormattingArgs(n_workers=0)

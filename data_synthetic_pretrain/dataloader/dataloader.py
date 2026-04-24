@@ -6,9 +6,9 @@ from multiprocessing.synchronize import Event as EventClass
 from queue import Empty, Full
 from typing import Iterator, List
 
-from copy import deepcopy
 import numpy as np
-from dataclasses import dataclass
+from copy import deepcopy
+from typing import TypedDict
 from data_synthetic_pretrain.dataloader.data_generation_args import (
     SyntheticTasksFormattingArgs,
     SyntheticTasksGenerationArgs,
@@ -17,9 +17,8 @@ from data_synthetic_pretrain.tasks import SYNTHETIC_TASKS
 from data_synthetic_pretrain.tasks.base_task import BaseSynteticTaskGenerator
 from data_synthetic_pretrain.tasks.models import SynteticTask
 
-@dataclass
-class DataloaderState:
-    sampled_batches: int = 0
+class DataloaderState(TypedDict):
+    sampled_batches: int
 
 
 def _batched_consume_buffer(
@@ -64,7 +63,7 @@ class SyntheticDataLoader:
         weights_arr = np.array(weights) / np.sum(weights)
         self.weights = weights_arr
         self.formatting_args = formatting_args
-        self.state = DataloaderState()
+        self.state: DataloaderState = {"sampled_batches": 0}
 
     def _format_sample(self, sample: SynteticTask) -> np.ndarray:
         context = np.array(sample.context)
@@ -135,7 +134,7 @@ class SyntheticDataLoader:
         def batches_with_state():
             try:
                 for batch_arr in raw:
-                    self.state.sampled_batches += 1
+                    self.state["sampled_batches"] += 1
                     yield (batch_arr, deepcopy(self.state))
             finally:
                 raw.close()
@@ -159,7 +158,7 @@ class SyntheticDataLoader:
                 for _ in range(self.formatting_args.batch_size)
             ]
             batch = np.stack(rows, axis=0)
-            self.state.sampled_batches += 1
+            self.state["sampled_batches"] += 1
             yield (batch, deepcopy(self.state))
 
 

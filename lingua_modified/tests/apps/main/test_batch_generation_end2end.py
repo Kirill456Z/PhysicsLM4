@@ -61,7 +61,7 @@ class TestBatchGenerationE2E:
         np.savez_compressed(
             out_npz,
             batch=batch_np,
-            sampled_batches=int(dl_state.sampled_batches),
+            sampled_batches=int(dl_state["sampled_batches"]),
         )
         with meta_path.open("w", encoding="utf-8") as f:
             json.dump(

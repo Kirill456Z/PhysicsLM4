@@ -20,7 +20,7 @@ class DepoSynteticTask(SynteticTask):
     answer_start_index: int
 
 
-class DepoRefactored(BaseSynteticTaskGenerator):
+class BFSTaskGenerator(BaseSynteticTaskGenerator):
     name = "depo"
 
     def __init__(self, config: DepoGenerationArgs):

@@ -104,6 +104,10 @@ class TestDepo:
         ([1, 5, 12], 0.0, 0.0),
         ([6, 1, 12], 0.0, 0.3333333333333333),
         ([1, 5, 11], 0.0, 0.0),
+        ([1, 2], 0.0, 0.0),
+        ([6], 0.0, 0.33333333333333333),
+        ([6, 5, 11, 12, 13], 1.0, 1.0),
+        ([], 0.0, 0.0),
     ])
     def test_depo_eval_correct_answer(self, depo_generation_args, depo_task, generation, accuracy, prefix_accuracy):
         depo_task_generator = DepoRefactored(depo_generation_args)

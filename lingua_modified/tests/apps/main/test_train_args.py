@@ -12,6 +12,7 @@ from apps.main.train_args import (
     validate_train_args,
     prepare_train_args,
 )
+from data_synthetic_pretrain.dataloader.dataloader import build_dataloader
 
 
 DEPO_DEBUG_YAML = (
@@ -90,3 +91,14 @@ class TestDepoDebugYamlAgainstTrainArgs:
         args = _merge_train_args_like_train_py(DEPO_DEBUG_YAML)
         prepare_train_args(args)
         validate_train_args(args, args.model.vocab_size)
+    
+    @pytest.fixture
+    def validated_train_args(self):
+        args = _merge_train_args_like_train_py(DEPO_DEBUG_YAML)
+        prepare_train_args(args)
+        validate_train_args(args, args.model.vocab_size)
+        return args
+    
+    def test_validate_dataloader_args(self, validated_train_args):
+        args = validated_train_args
+        build_dataloader(args.synthetic_tasks_generation_args, args.synthetic_tasks_formatting_args)

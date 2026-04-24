@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from enum import Enum
 
 
@@ -10,6 +10,13 @@ class NodeWord(BaseModel):
 
 class SpecialToken(BaseModel):
     token: int
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_from_int(cls, data):
+        if isinstance(data, int):
+            return {"token": data}
+        return data
 
 class EncodingFormat(Enum):
     EDGES_LIST = "edges_list"

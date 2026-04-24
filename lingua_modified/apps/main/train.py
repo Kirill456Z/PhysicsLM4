@@ -483,7 +483,10 @@ def train(args: TrainArgs):
                     )
                 )
                 eval_args.metric_log_dir = args.dump_dir
+
+                logger.info("Launching evals")
                 if args.async_eval_gpus is None:
+                    logger.info(f"launching synthetic evals on {len(args.synthetic_tasks_generation_args.synthetic_tasks)} tasks")
                     if len(args.synthetic_tasks_generation_args.synthetic_tasks) > 0:
                         launch_eval(eval_args, data_loader.generators)
                     else:

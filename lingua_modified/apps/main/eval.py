@@ -304,6 +304,7 @@ def launch_eval(cfg: EvalArgs, task_generators: list[BaseSynteticTaskGenerator] 
     if cfg.validation:
         val_results = eval_on_val(generator, cfg.validation, train_cfg)
     if task_generators is not None:
+        logger.info("Starting synthetic eval")
         val_results = eval_on_synthetic_tasks(generator, task_generators)
         logger.info(f"All evaluation results: {val_results}")
         if get_global_rank() == 0 and val_results is not None and wandb.run is not None:

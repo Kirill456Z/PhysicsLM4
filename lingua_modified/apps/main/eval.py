@@ -11,6 +11,7 @@
 # These modifications are licensed under the Apache 2.0 license, as stated in the root LICENSE file.
 #
 
+from data_synthetic_pretrain.tasks.base_task import BaseSynteticTaskGenerator
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -175,10 +176,15 @@ class EvalHarnessLM(LM):
     
 
 def eval_on_synthetic_tasks(generator, task_generators: list[BaseSynteticTaskGenerator]):
+    all_metrics = {}
     for task_generator in task_generators:
         eval_set = task_generator.get_eval_set()
         generations, _, _ = generator.generate(eval_set)
-        metrics = task_generator.evaluate(generations)
+        logger.info(f"Generated {len(generations)} generations for {task_generator.name}")
+        logger.info(f"Generations: {generations}")
+        metrics = task_generator.batch_evaluate(generations)
+        all_metrics.update(metrics)
+    return all_metrics
 
 
 def eval_on_val(generator, val_args: ValidationArgs, train_cfg):
@@ -234,7 +240,7 @@ def eval_on_val(generator, val_args: ValidationArgs, train_cfg):
 
     return all_val_metrics
 
-def launch_eval(cfg: EvalArgs):
+def launch_eval(cfg: EvalArgs, task_generators: list[BaseSynteticTaskGenerator] | None = None):
     if not torch.distributed.is_initialized():
         setup_torch_distributed(DistributedArgs())
     if (
@@ -268,6 +274,8 @@ def launch_eval(cfg: EvalArgs):
     val_results =  None
     if cfg.validation:
         val_results = eval_on_val(generator, cfg.validation, train_cfg)
+    if task_generators is not None:
+        val_results = eval_on_synthetic_tasks(generator, task_generators)
     if get_global_rank() == 0:
         with open(Path(cfg.dump_dir) / "results.json", "w") as f:
             f.write(json.dumps(results))

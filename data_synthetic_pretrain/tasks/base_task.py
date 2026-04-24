@@ -72,3 +72,6 @@ class BaseSynteticTaskGenerator:
         for task, generation in zip[tuple[SynteticTask, list[int]]](self.eval_set, generations):
             results.append(self.evaluate(task, generation))
         results = self._aggregate_eval_results(results)
+        return {
+            f"{self.name}/{metric_name}": value for metric_name, value in results.items()
+        }

@@ -107,13 +107,13 @@ class DepoRefactored(BaseSynteticTaskGenerator):
         self, task: DepoSynteticTask, generation: list[int]
     ) -> dict[str, float]:
         generation = np.array(generation)
-        is_oov_token = generation > 2 * self.config.base_vocab_size
+        is_oov_token = generation > 2 * self.config.graph_generator_config.base_vocab_size
         if np.any(is_oov_token):
             truncated_generation = generation[:is_oov_token.argmax() + 1]
         else:
             truncated_generation = generation
-        correct = (truncated_generation == task.answer_nodes)
-        prefix_correct = 0.0 if not correct[0] else np.argmin(correct) + 1
+        correct = (truncated_generation == task.answer_nodes[0].tokens)
+        prefix_correct = 0.0 if not correct[0] else (np.argmin(correct) or len(correct)) / len(correct)
         return {
             f"hop_{task.num_hops[0]}/accuracy": np.all(correct),
             f"hop_{task.num_hops[0]}/prefix_accuracy": prefix_correct,

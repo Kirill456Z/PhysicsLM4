@@ -46,3 +46,4 @@ setup.sequence = ["install", "kernel"]
 setup.help = "Install deps + register Jupyter kernel (Mac/CPU)"
 setup-cuda.sequence = ["install-cuda", "kernel"]
 setup-cuda.help = "Install deps incl. CUDA wheels + register Jupyter kernel (Linux/GPU)"
+ui = { cmd = "bash data_synthetic_pretrain/dev/data_observer/start.sh", help = "Start data_observer backend + frontend UI" }

@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR/backend"
 FRONTEND_DIR="$SCRIPT_DIR/frontend"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # ── Backend ──────────────────────────────────────────────────────────────────
 echo ">>> Setting up backend..."
-cd "$BACKEND_DIR"
+cd "$REPO_ROOT"
 
-if [ ! -d "venv" ]; then
-  python3 -m venv venv
+if ! command -v poetry >/dev/null 2>&1; then
+  echo "ERROR: poetry is not installed or not in PATH." >&2
+  exit 1
 fi
 
-source venv/bin/activate
-pip install -q -r requirements.txt
+# Install backend deps into the Poetry environment if they are missing.
+if ! poetry run python -c "import fastapi, uvicorn, pydantic, yaml, numpy" >/dev/null 2>&1; then
+  poetry run pip install -q -r "$BACKEND_DIR/requirements.txt"
+fi
 
 echo ">>> Starting backend on http://localhost:8000 (API docs: http://localhost:8000/docs)"
-uvicorn main:app --reload --port 8000 &
+poetry run uvicorn main:app --reload --port 8000 --app-dir "$BACKEND_DIR" &
 BACKEND_PID=$!
 
 # ── Frontend ──────────────────────────────────────────────────────────────────

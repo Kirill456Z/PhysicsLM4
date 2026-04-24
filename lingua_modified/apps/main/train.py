@@ -484,7 +484,10 @@ def train(args: TrainArgs):
                 )
                 eval_args.metric_log_dir = args.dump_dir
                 if args.async_eval_gpus is None:
-                    launch_eval(eval_args)
+                    if len(args.synthetic_tasks_generation_args.synthetic_tasks) > 0:
+                        launch_eval(eval_args, data_loader.generators)
+                    else:
+                        launch_eval(eval_args)
                 elif get_is_master():
                     if wandb.run is not None and args.logging.wandb is not None:
                         eval_args.wandb = deepcopy(args.logging.wandb)

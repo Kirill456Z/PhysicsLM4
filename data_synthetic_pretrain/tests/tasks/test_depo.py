@@ -9,7 +9,8 @@ from data_synthetic_pretrain.graph.models import (
     EncodingFormat,
     NodeWord,
 )
-from data_synthetic_pretrain.tasks.depo import DepoGenerationArgs, DepoRefactored
+from unittest.mock import MagicMock
+from data_synthetic_pretrain.tasks.depo import DepoGenerationArgs, DepoRefactored, DepoSynteticTask
 
 
 class TestDepo:
@@ -84,3 +85,29 @@ class TestDepo:
             h = int(task.num_hops[i])
             a = task.answer_nodes[i].tokens[0]
             assert a == (q + h) % 10
+    
+    @pytest.fixture
+    def depo_task(self):
+        return DepoSynteticTask(
+            task_index=99,
+            context=[],
+            loss_mask=[],
+            graph=MagicMock(spec=Graph),
+            query_nodes=[NodeWord(tokens=(5, 11))],
+            answer_nodes=[NodeWord(tokens=(6, 5, 11))],
+            num_hops=[1],
+            answer_start_index=8,
+        )
+
+    @pytest.mark.parametrize("generation, accuracy, prefix_accuracy", [
+        ([6, 5, 11], 1.0, 1.0),
+        ([1, 5, 12], 0.0, 0.0),
+        ([6, 1, 12], 0.0, 0.3333333333333333),
+        ([1, 5, 11], 0.0, 0.0),
+    ])
+    def test_depo_eval_correct_answer(self, depo_generation_args, depo_task, generation, accuracy, prefix_accuracy):
+        depo_task_generator = DepoRefactored(depo_generation_args)
+        metrics = depo_task_generator.evaluate(depo_task, generation)
+        print(metrics)
+        assert metrics["hop_1/accuracy"] == accuracy
+        assert metrics["hop_1/prefix_accuracy"] == prefix_accuracy

@@ -95,9 +95,10 @@ class DepoRefactored(BaseSynteticTaskGenerator):
         eval_set = []
         num_hops = 1
         while num_hops <= self.config.max_hops:
-            eval_set.extend(
-                self.generate(num_hops=num_hops, num_nodes=self.config.max_nodes, num_query_nodes=1)
-            )
+            for _ in range(100):
+                eval_set.append(
+                    self.generate(num_hops=num_hops, num_nodes=self.config.max_nodes, num_query_nodes=1)
+                )
             num_hops *= 2
         for eval_task in eval_set:
             eval_task.context = eval_task.context[:eval_task.answer_start_index]

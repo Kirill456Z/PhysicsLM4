@@ -276,6 +276,7 @@ def launch_eval(cfg: EvalArgs, task_generators: list[BaseSynteticTaskGenerator] 
         val_results = eval_on_val(generator, cfg.validation, train_cfg)
     if task_generators is not None:
         val_results = eval_on_synthetic_tasks(generator, task_generators)
+        logger.info(f"All evaluation results: {val_results}")
     if get_global_rank() == 0:
         #with open(Path(cfg.dump_dir) / "results.json", "w") as f:
             #f.write(json.dumps(results))

@@ -9,6 +9,7 @@ from collections import deque
 
 class BFSGenerationConfig(BaseSyntheticTaskConfig):
     query_token: int
+    max_nodes: int
 
 
 class BFSSynteticTask(SynteticTask):
@@ -27,7 +28,7 @@ class BFSTaskGenerator(BaseSynteticTaskGenerator):
         return cls(BFSGenerationConfig.model_validate(config))
 
     def resolve_for_query(
-        self, graph: Graph, query_node: NodeWord, num_steps: int
+        self, graph: Graph, query_node: NodeWord
     ) -> NodeWord:
         bfs_queue = deque([query_node])
         result = []
@@ -75,19 +76,23 @@ class BFSTaskGenerator(BaseSynteticTaskGenerator):
             graph=graph,
             query_node=query_node,
             answer_start_index=answer_start_index,
+            answer_sequence=answer_nodes,
         )
 
     @override
     def _generate_eval_set(self) -> list[BFSSynteticTask]:
         eval_set = []
-        eval_set.extend(
-            self.generate(num_nodes=self.config.max_nodes)
-        )
+        for _ in range(100):
+            eval_set.append(
+                self.generate(num_nodes=self.config.max_nodes)
+            )
+        for eval_task in eval_set:
+            eval_task.context = eval_task.context[:eval_task.answer_start_index]
         return eval_set
 
     @override
     def evaluate(
-        self, task: DepoSynteticTask, generation: list[int]
+        self, task: BFSSynteticTask, generation: list[int]
     ) -> dict[str, float]:
         generation = np.array(generation)
         answer_tokens = np.array(task.answer_nodes[0].tokens)

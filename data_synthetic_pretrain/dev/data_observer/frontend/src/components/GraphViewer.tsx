@@ -50,7 +50,15 @@ const STYLESHEET: cytoscape.StylesheetStyle[] = [
       'line-color': '#334155',
       'target-arrow-color': '#475569',
       'target-arrow-shape': 'triangle',
+      'source-arrow-color': '#475569',
+      'source-arrow-shape': 'none',
       'curve-style': 'bezier',
+    },
+  },
+  {
+    selector: 'edge.bidirectional',
+    style: {
+      'source-arrow-shape': 'triangle',
     },
   },
 ]
@@ -62,7 +70,7 @@ function tokensKey(tokens: number[]): string {
 export default function GraphViewer({ graph, taskSpecific }: Props) {
   const cyRef = useRef<cytoscape.Core | null>(null)
 
-  const { elements, querySet, answerSet } = useMemo(() => {
+  const { elements, querySet, answerSet, renderedEdgeCount } = useMemo(() => {
     const querySet = new Set<string>()
     const answerSet = new Set<string>()
 
@@ -82,11 +90,40 @@ export default function GraphViewer({ graph, taskSpecific }: Props) {
       }
     })
 
-    const edges = graph.edges.map((edge, i) => ({
-      data: { id: `e${i}`, source: String(edge.from), target: String(edge.to) },
-    }))
+    type EdgeElement = {
+      data: { id: string; source: string; target: string }
+      classes?: string
+    }
 
-    return { elements: [...nodes, ...edges], querySet, answerSet }
+    const edgeMap = new Map<string, EdgeElement>()
+
+    graph.edges.forEach((edge) => {
+      const source = String(edge.from)
+      const target = String(edge.to)
+      const pairKey =
+        edge.from < edge.to ? `${edge.from}|${edge.to}` : `${edge.to}|${edge.from}`
+      const existing = edgeMap.get(pairKey)
+
+      if (!existing) {
+        edgeMap.set(pairKey, {
+          data: { id: `e-${pairKey}`, source, target },
+        })
+        return
+      }
+
+      if (existing.data.source !== source || existing.data.target !== target) {
+        existing.classes = 'bidirectional'
+      }
+    })
+
+    const edges = Array.from(edgeMap.values())
+
+    return {
+      elements: [...nodes, ...edges],
+      querySet,
+      answerSet,
+      renderedEdgeCount: edges.length,
+    }
   }, [graph, taskSpecific])
 
   return (
@@ -105,7 +142,7 @@ export default function GraphViewer({ graph, taskSpecific }: Props) {
 
       {/* Legend */}
       <div className="absolute bottom-4 left-4 flex flex-col gap-1 text-xs text-slate-500">
-        <span>{graph.n_nodes} nodes &middot; {graph.edges.length} edges</span>
+        <span>{graph.n_nodes} nodes &middot; {renderedEdgeCount} edges</span>
         {taskSpecific?.type === 'depo' && (
           <div className="flex gap-3 mt-1">
             <span className="flex items-center gap-1">

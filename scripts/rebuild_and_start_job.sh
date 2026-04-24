@@ -165,7 +165,7 @@ fi
 # Commit all files with the new tag version
 echo "Committing changes..."
 git add -A
-git commit -m "Release version ${NEW_TAG}"
+git commit -m "Version ${NEW_TAG}"
 echo "Committed changes with tag ${NEW_TAG}"
 
 # When resuming from checkpoint: copy config from recipe_stashes to configs (after commit, so it's not committed)

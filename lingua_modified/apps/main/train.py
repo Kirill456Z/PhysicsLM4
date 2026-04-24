@@ -207,9 +207,12 @@ def train(args: TrainArgs):
 
         # build optimizer after apply parallelisms to the model
         optimizer, scheduler = build_optimizer(model, args.optim, args.steps)
-        data_loader_state = init_dataloader_state_from_args(
-            args.data, dp_rank, dp_degree
-        )
+        if len(args.synthetic_tasks_generation_args.synthetic_tasks) > 0: 
+            data_loader_state = None
+        else:
+            data_loader_state = init_dataloader_state_from_args(
+                args.data, dp_rank, dp_degree
+            )
 
         train_state = TrainState(
             step=0,

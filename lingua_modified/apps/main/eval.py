@@ -301,8 +301,8 @@ def launch_eval(cfg: EvalArgs, task_generators: list[BaseSynteticTaskGenerator] 
     #wrap = EvalHarnessLM(generator)
     #results = simple_evaluate(wrap, **asdict(cfg.harness))
     val_results =  None
-    if cfg.validation:
-        val_results = eval_on_val(generator, cfg.validation, train_cfg)
+    #if cfg.validation:
+        #val_results = eval_on_val(generator, cfg.validation, train_cfg)
     if task_generators is not None:
         logger.info("Starting synthetic eval")
         val_results = eval_on_synthetic_tasks(generator, task_generators)

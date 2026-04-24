@@ -6,9 +6,9 @@ from multiprocessing.synchronize import Event as EventClass
 from queue import Empty, Full
 from typing import Iterator, List
 
+from copy import deepcopy
 import numpy as np
-from pydantic import BaseModel
-
+from dataclasses import dataclass
 from data_synthetic_pretrain.dataloader.data_generation_args import (
     SyntheticTasksFormattingArgs,
     SyntheticTasksGenerationArgs,
@@ -17,8 +17,8 @@ from data_synthetic_pretrain.tasks import SYNTHETIC_TASKS
 from data_synthetic_pretrain.tasks.base_task import BaseSynteticTaskGenerator
 from data_synthetic_pretrain.tasks.models import SynteticTask
 
-
-class DataloaderState(BaseModel):
+@dataclass
+class DataloaderState:
     sampled_batches: int = 0
 
 
@@ -136,7 +136,7 @@ class SyntheticDataLoader:
             try:
                 for batch_arr in raw:
                     self.state.sampled_batches += 1
-                    yield (batch_arr, self.state.model_copy())
+                    yield (batch_arr, deepcopy(self.state))
             finally:
                 raw.close()
 
@@ -160,7 +160,7 @@ class SyntheticDataLoader:
             ]
             batch = np.stack(rows, axis=0)
             self.state.sampled_batches += 1
-            yield (batch, self.state.model_copy())
+            yield (batch, deepcopy(self.state))
 
 
 def build_dataloader(

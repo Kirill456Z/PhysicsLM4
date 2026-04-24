@@ -68,12 +68,14 @@ class DepoRefactored(BaseSynteticTaskGenerator):
         context = [self.config.task_index] + graph.encode()
         loss_mask = [0] * len(context)
         answer_nodes = []
-        answer_start_index = len(context) + 2
+        answer_start_index = None
         for i, num_hops_cur in enumerate(num_hops):
             answer = self.resolve_for_query(graph, query_nodes[i], num_hops_cur)
             answer_nodes.append(answer)
             context.append(self.config.query_token_base + num_hops_cur)
             context += list(query_nodes[i].tokens)
+            if answer_start_index is None:
+                answer_start_index = len(context) + 1
             context += list(answer.tokens)
 
             loss_mask.extend([0] * (len(query_nodes[i].tokens) + 1))

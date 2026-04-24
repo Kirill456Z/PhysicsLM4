@@ -6,29 +6,24 @@ from data_synthetic_pretrain.graph.graph import Graph
 from data_synthetic_pretrain.graph.models import NodeWord
 
 
-class DepoGenerationArgs(BaseSyntheticTaskConfig):
-    max_nodes: int
-    max_hops: int
-    num_queries: int
-    query_token_base: int
+class BFSGenerationConfig(BaseSyntheticTaskConfig):
+    query_token: int
 
 
-class DepoSynteticTask(SynteticTask):
-    query_nodes: list[NodeWord]
-    answer_nodes: list[NodeWord]
-    num_hops: list[int]
-    answer_start_index: int
+class BFSSynteticTask(SynteticTask):
+    query_node: NodeWord
+    answer_sequence: list[NodeWord]
 
 
 class BFSTaskGenerator(BaseSynteticTaskGenerator):
-    name = "depo"
+    name = "bfs"
 
-    def __init__(self, config: DepoGenerationArgs):
+    def __init__(self, config: BFSGenerationConfig):
         super().__init__(config)
 
     @classmethod
     def build_from_dict(cls, config: dict) -> BaseSynteticTaskGenerator:
-        return cls(DepoGenerationArgs.model_validate(config))
+        return cls(BFSGenerationConfig.model_validate(config))
 
     def resolve_for_query(
         self, graph: Graph, query_node: NodeWord, num_steps: int
@@ -50,21 +45,11 @@ class BFSTaskGenerator(BaseSynteticTaskGenerator):
     def generate(
         self,
         num_nodes: int | None = None,
-        num_hops: int | None = None,
-        num_query_nodes: int | None = None,
-    ) -> DepoSynteticTask:
+    ) -> BFSSynteticTask:
         num_nodes = self._sample_num_nodes() if num_nodes is None else num_nodes
-        num_hops = (
-            np.random.randint(1, self.config.max_hops + 1, size=self.config.num_queries)
-            if num_hops is None
-            else num_hops
-        )
-        num_query_nodes = (
-            self.config.num_queries if num_query_nodes is None else num_query_nodes
-        )
 
         graph = self.generate_graph(num_nodes=num_nodes)
-        query_nodes = np.random.choice(graph.nodes, size=num_query_nodes)
+        query_node = np.random.choice(graph.nodes, size=1)[0]
         context = [self.config.task_index] + graph.encode()
         loss_mask = [0] * len(context)
         answer_nodes = []

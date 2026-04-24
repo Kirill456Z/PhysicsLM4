@@ -1,0 +1,14 @@
+{
+  "batch_shape": [
+    2,
+    1024,
+    2
+  ],
+  "batch_dtype": "int64",
+  "seq_len": 1024,
+  "batch_size": 2,
+  "pad_token": 0,
+  "no_train_label_token": -100,
+  "input_ids_slice_dim": 0,
+  "labels_slice_dim": 1
+}

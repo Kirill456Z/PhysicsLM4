@@ -279,13 +279,9 @@ def train(args: TrainArgs):
         
             if every_n_steps(train_state, 20, acc_step=0):
                 logger.info("batch observability")
-                _po = torch.get_printoptions()
-                try:
-                    torch.set_printoptions(threshold=sys.maxsize, linewidth=10_000)
-                    logger.info(f"input_ids: {batch[0, :, 0]}")
-                    logger.info(f"labels: {batch[0, :, 1]}")
-                finally:
-                    torch.set_printoptions(**_po)
+                # .tolist() avoids torch print/summarization APIs (unavailable in some builds)
+                logger.info(f"input_ids: {batch[0, :, 0].tolist()}")
+                logger.info(f"labels: {batch[0, :, 1].tolist()}")
        
 
             if every_n_steps(train_state, args.gc_collect_freq, acc_step=0):

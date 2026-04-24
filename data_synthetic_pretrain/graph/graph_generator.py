@@ -33,6 +33,7 @@ class GraphGenerator:
     def generate_random_graph(self, num_nodes: int) -> Graph:
         nodes = self.generate_node_words(num_nodes)
         adj_matrix = np.random.random(size=(num_nodes, num_nodes)) < self.config.edge_probability
+        np.fill_diagonal(adj_matrix, False)
         if not self.config.is_directed:
             adj_matrix |= adj_matrix.T
         edges = defaultdict(list)

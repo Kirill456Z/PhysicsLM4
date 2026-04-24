@@ -129,3 +129,8 @@ logging:
         entity: kirill456z
         project: physics4llm
         name: "mix_{semver_tag}"
+
+eval:
+  name: "mixed_eval"
+  dump_dir: /scratch/zemlians/physics4lm/mixed_eval
+

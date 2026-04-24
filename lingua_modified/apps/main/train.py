@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from timeit import default_timer as timer
 from typing import Any, Dict
+from data_synthetic_pretrain.dataloader.dataloader import get_generators
 
 from data_synthetic_pretrain.dataloader.dataloader import build_dataloader
 from omegaconf import OmegaConf
@@ -488,7 +489,11 @@ def train(args: TrainArgs):
                 if args.async_eval_gpus is None:
                     logger.info(f"launching synthetic evals on {len(args.synthetic_tasks_generation_args.synthetic_tasks)} tasks")
                     if len(args.synthetic_tasks_generation_args.synthetic_tasks) > 0:
-                        launch_eval(eval_args, data_loader.generators)
+                        generators, _ = get_generators(
+                            args.synthetic_tasks_generation_args,
+                            args.synthetic_tasks_formatting_args, 
+                        )
+                        launch_eval(eval_args, generators)
                     else:
                         launch_eval(eval_args)
                 elif get_is_master():

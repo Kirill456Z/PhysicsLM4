@@ -4,6 +4,7 @@ from typing import override
 import numpy as np
 from data_synthetic_pretrain.graph.graph import Graph
 from data_synthetic_pretrain.graph.models import NodeWord
+from collections import queue
 
 
 class BFSGenerationConfig(BaseSyntheticTaskConfig):
@@ -53,7 +54,8 @@ class BFSTaskGenerator(BaseSynteticTaskGenerator):
         context = [self.config.task_index] + graph.encode()
         loss_mask = [0] * len(context)
         answer_nodes = []
-        answer_start_index = len(context) + 2
+        context.append(self.config.query_token)
+        loss_mask.append(0)
         for i, num_hops_cur in enumerate(num_hops):
             answer = self.resolve_for_query(graph, query_nodes[i], num_hops_cur)
             answer_nodes.append(answer)

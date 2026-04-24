@@ -17,7 +17,6 @@ class DepoSynteticTask(SynteticTask):
     query_nodes: list[NodeWord]
     answer_nodes: list[NodeWord]
     num_hops: list[int]
-    answer_start_index: int
 
 
 class DepoRefactored(BaseSynteticTaskGenerator):

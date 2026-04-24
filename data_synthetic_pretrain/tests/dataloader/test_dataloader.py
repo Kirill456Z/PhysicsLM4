@@ -35,6 +35,7 @@ class PicklableTaskStub:
             loss_mask=list(self._loss_mask),
             task_index=self._task_index,
             graph=self._graph,
+            answer_start_index=5,
         )
 
 
@@ -46,6 +47,7 @@ class TestSyntheticDataLoader:
             loss_mask=[1, 1, 1, 1, 1],
             task_index=0,
             graph=_minimal_graph(),
+            answer_start_index=5,
         )
 
     @pytest.fixture

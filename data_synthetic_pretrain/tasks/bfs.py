@@ -4,7 +4,7 @@ from typing import override
 import numpy as np
 from data_synthetic_pretrain.graph.graph import Graph
 from data_synthetic_pretrain.graph.models import NodeWord
-from collections import queue
+from collections import deque
 
 
 class BFSGenerationConfig(BaseSyntheticTaskConfig):
@@ -29,10 +29,16 @@ class BFSTaskGenerator(BaseSynteticTaskGenerator):
     def resolve_for_query(
         self, graph: Graph, query_node: NodeWord, num_steps: int
     ) -> NodeWord:
-        while num_steps > 0:
-            query_node = graph.edges[query_node][0]
-            num_steps -= 1
-        return query_node
+        bfs_queue = deque([query_node])
+        result = []
+        while len(bfs_queue) > 0:
+            current_node = bfs_queue.popleft()
+            result.append(current_node)
+            neighbors = sorted(graph.edges[current_node], key=lambda x: x.tokens)
+            for neighbor in neighbors:
+                if neighbor not in result:
+                    bfs_queue.append(neighbor)
+        return result
 
     def _sample_num_nodes(self):
         node_choices = list(range(3, self.config.max_nodes + 1))
@@ -53,40 +59,30 @@ class BFSTaskGenerator(BaseSynteticTaskGenerator):
         query_node = np.random.choice(graph.nodes, size=1)[0]
         context = [self.config.task_index] + graph.encode()
         loss_mask = [0] * len(context)
-        answer_nodes = []
         context.append(self.config.query_token)
         loss_mask.append(0)
-        for i, num_hops_cur in enumerate(num_hops):
-            answer = self.resolve_for_query(graph, query_nodes[i], num_hops_cur)
-            answer_nodes.append(answer)
-            context.append(self.config.query_token_base + num_hops_cur)
-            context += list(query_nodes[i].tokens)
-            context += list(answer.tokens)
-
-            loss_mask.extend([0] * (len(query_nodes[i].tokens) + 1))
-            loss_mask.extend([1] * len(answer.tokens))
-        return DepoSynteticTask(
+        context.extend(query_node.tokens)
+        loss_mask.extend([0] * len(query_node.tokens))
+        answer_nodes = self.resolve_for_query(graph, query_node)
+        answer_start_index = len(context) + 1
+        for answer_node in answer_nodes:
+            context.extend(answer_node.tokens)
+            loss_mask.extend([1] * len(answer_node.tokens))
+        return BFSSynteticTask(
             task_index=self.config.task_index,
             context=context,
             loss_mask=loss_mask,
             graph=graph,
-            query_nodes=query_nodes,
-            answer_nodes=answer_nodes,
-            num_hops=num_hops,
+            query_node=query_node,
             answer_start_index=answer_start_index,
         )
 
     @override
-    def _generate_eval_set(self) -> list[DepoSynteticTask]:
+    def _generate_eval_set(self) -> list[BFSSynteticTask]:
         eval_set = []
-        num_hops = 1
-        while num_hops <= self.config.max_hops:
-            eval_set.extend(
-                self.generate(num_hops=num_hops, num_nodes=self.config.max_nodes, num_query_nodes=1)
-            )
-            num_hops *= 2
-        for eval_task in eval_set:
-            eval_task.context = eval_task.context[:eval_task.answer_start_index]
+        eval_set.extend(
+            self.generate(num_nodes=self.config.max_nodes)
+        )
         return eval_set
 
     @override

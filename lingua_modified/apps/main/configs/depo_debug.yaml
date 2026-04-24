@@ -129,11 +129,3 @@ logging:
         entity: kirill456z
         project: physics4llm
         name: "mix_{semver_tag}"
-
-eval:
-  eval_dir: "scratch/zemlians/physics4lm/mixed_eval"
-  max_examples: 100           # examples used for inference per bucket
-  max_answer_size: 4          # buckets 0..4 only (dense graph rarely has smaller sets)
-  num_examples_generate: 200  # examples to generate per bucket
-  temperature: 0.0
-  max_gen_len: 64

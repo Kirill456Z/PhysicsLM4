@@ -14,6 +14,7 @@ class SynteticTask(BaseModel):
     task_index: int
     context: list[int]
     loss_mask: list[int]
+    answer_start_index: int
 
     @classmethod
     def validate(cls, value):

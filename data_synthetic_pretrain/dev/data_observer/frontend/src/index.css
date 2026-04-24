@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+/* Make CodeMirror fill its container */
+.cm-editor {
+  height: 100%;
+  font-size: 12px;
+}
+.cm-scroller {
+  overflow: auto;
+}

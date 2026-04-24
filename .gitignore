@@ -8,3 +8,5 @@ recipe_stashes/
 physicslm4.egg-info/*
 plots/*
 reports/*
+**/node_modules/*
+**/venv/*

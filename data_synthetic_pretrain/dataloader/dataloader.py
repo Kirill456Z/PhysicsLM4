@@ -168,7 +168,7 @@ def get_generators(
     generators = []
     weights = []
     for generation_args in synthetic_tasks_generation_args.synthetic_tasks:
-        generation_args.eval_dump_dir = synthetic_tasks_generation_args.eval_dump_dir
+        generation_args.generation_args["eval_dump_dir"] = synthetic_tasks_generation_args.eval_dump_dir
         task_generator = SYNTHETIC_TASKS[generation_args.task_name].build_from_dict(
             generation_args.generation_args
         )

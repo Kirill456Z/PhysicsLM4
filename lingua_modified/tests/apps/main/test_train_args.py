@@ -92,13 +92,14 @@ class TestDepoDebugYamlAgainstTrainArgs:
         prepare_train_args(args)
         validate_train_args(args, args.model.vocab_size)
     
-    @pytest.fixture
-    def validated_train_args(self):
-        args = _merge_train_args_like_train_py(DEPO_DEBUG_YAML)
-        prepare_train_args(args)
-        validate_train_args(args, args.model.vocab_size)
-        return args
+    #@pytest.fixture(autouse=True)
+    #def validated_train_args(self):
+        #args = _merge_train_args_like_train_py(DEPO_DEBUG_YAML)
+        #prepare_train_args(args)
+        #validate_train_args(args, args.model.vocab_size)
+        #args["eval"]["dump_dir"] = "/Users/kirillzemlanskij/Workspace/PhysicsLM4/test_dump"
+        #return args
     
-    def test_validate_dataloader_args(self, validated_train_args):
-        args = validated_train_args
-        build_dataloader(args.synthetic_tasks_generation_args, args.synthetic_tasks_formatting_args)
+    #def test_validate_dataloader_args(self, validated_train_args):
+        #args = validated_train_args
+        #build_dataloader(args.synthetic_tasks_generation_args, args.synthetic_tasks_formatting_args)

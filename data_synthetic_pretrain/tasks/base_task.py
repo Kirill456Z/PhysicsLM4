@@ -7,6 +7,9 @@ from pathlib import Path
 import hashlib
 from collections import defaultdict
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 class BaseSynteticTaskGenerator:
     """
@@ -25,6 +28,7 @@ class BaseSynteticTaskGenerator:
             eval_path = local_dir / "eval.jsonl"
 
             if not local_dir.exists():
+                logger.info(f"Generating eval set for {self.name}")
                 local_dir.mkdir(parents=True, exist_ok=False)
                 config_path.write_text(self.config.model_dump_json() + "\n", encoding="utf-8")
                 self.eval_set = self._generate_eval_set()

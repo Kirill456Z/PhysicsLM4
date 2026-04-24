@@ -1,0 +1,48 @@
+[build-system]
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"
+
+[project]
+name = "physicslm4"
+version = "0.1.0"
+description = "PhysicsLM4 project"
+authors = []
+requires-python = ">=3.12"
+dynamic = ["dependencies"]
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.12,<4.0"
+ninja = "*"
+numpy = "*"
+omegaconf = "*"
+msgspec = "*"
+rouge-score = "*"
+sacrebleu = "*"
+sentencepiece = "*"
+tiktoken = "*"
+blobfile = "*"
+wandb = "*"
+viztracer = "*"
+lm-eval = "*"
+scipy = "*"
+pynvml = "*"
+datatrove = "*"
+orjson = "*"
+flash-linear-attention = "*"
+torch = "2.7.0"
+xformers = "*"
+
+[tool.pytest.ini_options]
+pythonpath = ["lingua_modified"]
+
+[tool.poe.tasks]
+install = "poetry install"
+install-cuda = "poetry install --with cuda"
+kernel = "poetry run python -m ipykernel install --user --name physicslm4 --display-name PhysicsLM4"
+setup.sequence = ["install", "kernel"]
+setup.help = "Install deps + register Jupyter kernel (Mac/CPU)"
+setup-cuda.sequence = ["install-cuda", "kernel"]
+setup-cuda.help = "Install deps incl. CUDA wheels + register Jupyter kernel (Linux/GPU)"

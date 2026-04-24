@@ -1,0 +1,29 @@
+# Depo Evaluation Configuration
+#
+# This configuration file is used for evaluating trained models on the Depo dataset.
+# Evaluation is performed across multiple hop distances (1-8) to assess reasoning depth.
+
+# Checkpoint and data paths
+ckpt_dir: ""  # Will be set by training script or command-line
+eval_dir: "/scratch/zemlians/physics4lm/depo_eval_small"  # Directory containing depo.eval.hop_*.jsonl files
+dump_dir: ""  # Will be set by training script or command-line
+
+# Evaluation settings
+max_examples: null  # Evaluate all examples (set to a number to limit, e.g., 100 for quick testing)
+
+# Generation config (for answer prediction)
+temperature: 0.0  # Greedy decoding
+max_gen_len: 10  # Maximum tokens to generate per answer (answers are typically 1-2 tokens)
+vocab_size: 4  # Base vocabulary size — overridden at runtime by train.py from depo_generation_args.base_vocab_size
+
+# Wandb logging
+wandb: null  # Will be inherited from training config
+
+# Device
+device: "cuda"
+
+# Global step (for logging to wandb, will be set by training script)
+global_step: null
+
+# Metric log directory (for wandb, will be set by training script)
+metric_log_dir: null

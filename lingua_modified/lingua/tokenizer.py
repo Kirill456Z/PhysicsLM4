@@ -39,10 +39,18 @@ class Tokenizer(abc.ABC):
 
 
 class MockTokenizer(Tokenizer):
-    n_words: int = 256
+    n_words: int = 253
 
     def encode(self, tokens, add_bos, add_eos):
         return tokens
+    
+    def decode(self, tokens):
+        """Mock decode - returns string representation of token list"""
+        return " ".join(str(t) for t in tokens)
+    
+    def get_token_offsets(self, text: str, tokens: Optional[List[int]] = None) -> Tuple[List[str], List[int]]:
+        """Mock get_token_offsets - returns empty lists since this is for pre-tokenized data"""
+        return [], []
 
 
 class ByteTokenizer(Tokenizer):
@@ -76,6 +84,45 @@ class ByteTokenizer(Tokenizer):
                 byte_pos += len(char.encode("utf-8"))
 
         return decoded_chars, offsets
+
+
+class GPT2Tokenizer(Tokenizer):
+    """GPT-2 BPE tokenizer via tiktoken (no file needed)."""
+
+    def __init__(self):
+        self.enc = tiktoken.get_encoding("gpt2")
+        self.n_words = self.enc.n_vocab  # 50257
+        # GPT-2 uses <|endoftext|> (id 50256) for both BOS and EOS
+        self.bos_id = self.enc.encode_single_token("<|endoftext|>")
+        self.eos_id = self.enc.encode_single_token("<|endoftext|>")
+
+    def encode(self, s: str, add_bos: bool = False, add_eos: bool = False):
+        tokens = (
+            [self.bos_id] * add_bos
+            + self.enc.encode_ordinary(s)
+            + [self.eos_id] * add_eos
+        )
+        return tokens
+
+    def decode(self, tokens: List[int]):
+        return self.enc.decode(tokens)
+
+    def get_token_offsets(
+        self, text: str, tokens: Optional[List[int]] = None
+    ) -> Tuple[List[str], List[int]]:
+        if tokens is not None:
+            token_bytes = self.enc.decode_tokens_bytes(tokens)
+        else:
+            token_bytes = self.enc.decode_tokens_bytes(
+                self.enc.encode(text, allowed_special="all")
+            )
+
+        text_len, offsets = 0, []
+        for token in token_bytes:
+            offsets.append(max(0, text_len - (0x80 <= token[0] < 0xC0)))
+            text_len += sum(1 for c in token if not 0x80 <= c < 0xC0)
+        substrs = [text[s:e] for s, e in zip(offsets, offsets[1:] + [None])]
+        return substrs, offsets
 
 
 class SentencePieceTokenizer(Tokenizer):
@@ -187,14 +234,56 @@ class TikTokenTokenizer(Tokenizer):
         return substrs, offsets
 
 
+class HuggingFaceTokenizer(Tokenizer):
+    """Wraps any HuggingFace tokenizer by model name (auto-downloads and caches).
+
+    Usage:
+        name: huggingface
+        path: meta-llama/Llama-2-7b-hf   # or any HF model id
+    """
+
+    def __init__(self, model_name: str) -> None:
+        from transformers import AutoTokenizer
+
+        self.hf_tok = AutoTokenizer.from_pretrained(model_name)
+        self.n_words: int = self.hf_tok.vocab_size
+        self.bos_id: int = self.hf_tok.bos_token_id if self.hf_tok.bos_token_id is not None else 0
+        self.eos_id: int = self.hf_tok.eos_token_id if self.hf_tok.eos_token_id is not None else 0
+        logger.info(
+            f"Loaded HuggingFace tokenizer '{model_name}': "
+            f"#words: {self.n_words} - BOS ID: {self.bos_id} - EOS ID: {self.eos_id}"
+        )
+
+    def encode(self, s: str, add_bos: bool = False, add_eos: bool = False):
+        assert isinstance(s, str)
+        token_ids = self.hf_tok.encode(s, add_special_tokens=False)
+        return [self.bos_id] * add_bos + token_ids + [self.eos_id] * add_eos
+
+    def decode(self, tokens: List[int]):
+        return self.hf_tok.decode(tokens, skip_special_tokens=False)
+
+    def get_token_offsets(
+        self, text: str, tokens: Optional[List[int]] = None
+    ) -> Tuple[List[str], List[int]]:
+        encoding = self.hf_tok(text, add_special_tokens=False, return_offsets_mapping=True)
+        offsets_map = encoding["offset_mapping"]
+        substrs = [text[s:e] for s, e in offsets_map]
+        offsets = [s for s, _ in offsets_map]
+        return substrs, offsets
+
+
 def build_tokenizer(name: str, path: Optional[str] = None) -> Tokenizer:
     if name == "bytes":
         return ByteTokenizer()
     elif name == "mock":
         return MockTokenizer()
+    elif name == "gpt2":
+        return GPT2Tokenizer()
     elif name == "sp":
         return SentencePieceTokenizer(path)
     elif name == "tiktoken":
         return TikTokenTokenizer(path)
+    elif name == "huggingface":
+        return HuggingFaceTokenizer(path)
     else:
         raise NotImplementedError(f"{name} tokenizer type is not implemented")

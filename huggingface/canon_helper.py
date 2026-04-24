@@ -37,7 +37,7 @@ class ShortConvolution(nn.Conv1d):
         kernel_size: int,
         bias: bool = False,
         activation: Optional[str] = 'silu',
-        use_fast_conv1d: Optional[bool] = True,
+        use_fast_conv1d: Optional[bool] = False,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):

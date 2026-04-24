@@ -1,44 +1,40 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # This software may be used and distributed according to the terms of the Llama 2 Community License Agreement.
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# This software may be used and distributed according to the terms of the Llama 2 Community License Agreement.
 
 from copy import deepcopy
 import gc
 import logging
 import os
 import sys
-import time
 from contextlib import ExitStack
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from timeit import default_timer as timer
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
-import numpy as np
+from data_synthetic_pretrain.dataloader.dataloader import build_dataloader
 from omegaconf import OmegaConf
 import torch
 import torch.distributed
-import torch.nn.functional as F
 import xformers.profiler
 from torch.optim import lr_scheduler
 from torch.distributed.checkpoint.stateful import Stateful
 from torch.distributed._tensor import DTensor
 
 from lingua.args import dataclass_from_dict, dump_config, flatten_dict
-from lingua.checkpoint import CheckpointArgs, CheckpointManager, load_from_checkpoint
+from lingua.checkpoint import CheckpointManager, load_from_checkpoint
 from lingua.data import (
-    DataArgs,
     PackTokensState,
     build_dataloader_from_args,
     init_dataloader_state_from_args,
 )
 from lingua.distributed import (
-    DistributedArgs,
-    EnvironmentArgs,
     init_signal_handler,
     dist_mean_dict,
     get_device_mesh,
     get_is_master,
-    get_world_size,
     parallelize_model,
     setup_env,
     setup_torch_distributed,
@@ -49,15 +45,13 @@ from lingua.distributed import (
 from lingua.logger import init_logger
 from lingua.metrics import (
     GPUMemoryMonitor,
-    LoggingArgs,
     MetricLogger,
     get_num_params,
 )
-from lingua.optim import OptimArgs, build_optimizer
-from lingua.profiling import ProfilerArgs, maybe_run_profiler
+from lingua.optim import build_optimizer
+from lingua.profiling import maybe_run_profiler
 from lingua.tokenizer import build_tokenizer
 from apps.main.transformer import (
-    LMTransformerArgs,
     LMTransformer,
     get_num_flop_per_token,
     build_fsdp_grouping_plan,
@@ -72,36 +66,16 @@ import wandb
 logger = logging.getLogger()
 
 
-@dataclass
-class TrainArgs:
-    name: str = "lingua"
-    dump_dir: str = ""
+import logging
 
-    seed: int = 42
+import torch
+import torch.distributed
 
-    # Number of gradient accumulation steps
-    # Total batch size is batch_size*grad_acc_steps
-    grad_acc_steps: int = 1
+from apps.main.train_args import TrainArgs, prepare_train_args, validate_train_args
+from apps.main.count_flops import get_num_flop_per_token
 
-    gc_collect_freq: int = 1000
-    probe_freq: Optional[int] = None
 
-    # Nb optimizer steps to take
-    steps: int = 1000
-
-    data: DataArgs = field(default_factory=DataArgs)
-    optim: OptimArgs = field(default_factory=OptimArgs)
-    model: LMTransformerArgs = field(default_factory=LMTransformerArgs)
-    distributed: DistributedArgs = field(default_factory=DistributedArgs)
-    env: EnvironmentArgs = field(default_factory=EnvironmentArgs)
-
-    checkpoint: CheckpointArgs = field(default_factory=CheckpointArgs)
-    profiling: ProfilerArgs = field(default_factory=ProfilerArgs)
-    logging: LoggingArgs = field(default_factory=LoggingArgs)
-
-    # If set to None, eval is run locally otherwise it launches a new job with the given number of gpus
-    async_eval_gpus: Optional[int] = None
-    eval: Optional[Any] = None
+logger = logging.getLogger()
 
 
 @dataclass
@@ -109,7 +83,7 @@ class TrainState(Stateful):
     step: int  # Nb of steps taken by the optimizer
     acc_step: int  # Nb of accumulation steps done since last optimizer step
     scheduler: lr_scheduler.LambdaLR
-    data_loader_state: PackTokensState
+    data_loader_state: Any
 
     def state_dict(self) -> Dict[str, Any]:
         return {
@@ -124,80 +98,6 @@ class TrainState(Stateful):
         self.acc_step = state_dict["acc_step"]
         self.data_loader_state = PackTokensState(**state_dict["data_loader_state"])
         self.scheduler.load_state_dict(state_dict["scheduler"])
-
-
-def validate_train_args(args: TrainArgs, output_size: int):
-    if args.model.vocab_size < 0:
-        logger.info(f"Setting model output size to {output_size}")
-        args.model.vocab_size = output_size
-    assert (
-        args.model.vocab_size == output_size
-    ), "Vocab size should be the same as output size"
-
-    assert args.dump_dir, "Dump dir not set"
-
-    if args.checkpoint.path is None:
-        logger.info(f"Setting checkpoint path to {str(Path(args.dump_dir) / 'checkpoints')}")
-        args.checkpoint.path = str(Path(args.dump_dir) / "checkpoints")
-
-    for source in args.data.sources:
-        data_path = os.path.join(args.data.root_dir, source)
-        assert os.path.exists(data_path), f"{data_path} doesn't exist"
-
-    if (
-        args.distributed.dp_replicate
-        * args.distributed.dp_shard
-        * args.distributed.tp_size
-        != get_world_size()
-    ):
-        assert get_world_size() % args.distributed.dp_shard == 0
-        args.distributed.dp_replicate = get_world_size() // args.distributed.dp_shard
-
-        assert args.distributed.dp_replicate % args.distributed.tp_size == 0
-        args.distributed.dp_replicate = (
-            args.distributed.dp_replicate // args.distributed.tp_size
-        )
-
-        logger.warning(
-            f"Setting Data Parallel size to {args.distributed.dp_replicate * args.distributed.dp_shard}"
-        )
-        assert (
-            args.distributed.dp_replicate
-            * args.distributed.dp_shard
-            * args.distributed.tp_size
-            == get_world_size()
-        )
-
-        if args.distributed.fsdp_type == "no_shard":
-            assert (
-                args.distributed.dp_shard == 1
-                and args.distributed.dp_replicate == get_world_size()
-            )
-
-    args.model.max_seqlen = args.data.seq_len
-
-    if args.distributed.tp_size == 1:
-        logger.warning(
-            "Tensor parallelism has not been tested for a while, use at your own risk"
-        )
-
-    assert (
-        args.probe_freq != args.profiling.mem_steps
-    ), "Don't profile during probe step"
-    assert (
-        args.probe_freq != args.profiling.profile_steps
-    ), "Don't profile during probe step"
-
-    if args.logging.wandb is not None:
-        args.logging.wandb.name = args.name
-
-    if args.probe_freq is not None:
-        assert (
-            args.distributed.tp_size == 1
-        ), "Probing not supported with tensor parallelism"
-        assert (
-            args.distributed.selective_activation_checkpointing is False
-        ), "Probing not supported with selective activation checkpointing"
 
 
 preemption_flag = dict(flag=False)
@@ -219,11 +119,16 @@ def every_n_steps(train_state, freq, acc_step=None, acc_freq=None):
 
 
 def train(args: TrainArgs):
+    prepare_train_args(args)
     with ExitStack() as context_stack:
-        tokenizer = build_tokenizer(args.data.tokenizer.name, args.data.tokenizer.path)
+        if args.data.tokenizer.name != "none":
+            tokenizer = build_tokenizer(args.data.tokenizer.name, args.data.tokenizer.path)
+            num_words = tokenizer.n_words
+        else:
+            num_words = args.model.vocab_size
         validate_train_args(
             args,
-            tokenizer.n_words,
+            num_words,
         )
         if get_is_master():
             os.makedirs(args.dump_dir, exist_ok=True)
@@ -241,7 +146,10 @@ def train(args: TrainArgs):
         dp_degree = dp_mesh.size()
         dp_rank = dp_mesh.get_local_rank()
         if args.distributed.dp_shard > 1:
-            dp_rank = dp_rank * world_mesh["dp_shard"].size() + world_mesh["dp_shard"].get_local_rank()
+            dp_rank = (
+                dp_rank * world_mesh["dp_shard"].size()
+                + world_mesh["dp_shard"].get_local_rank()
+            )
             dp_degree *= world_mesh["dp_shard"].size()
 
         logger.info(f"Running on dp rank : {dp_rank}")
@@ -276,8 +184,10 @@ def train(args: TrainArgs):
 
         if args.checkpoint.init_ckpt_path:
             logger.info(f"Loading initial model from {args.checkpoint.init_ckpt_path}")
-            load_from_checkpoint(args.checkpoint.init_ckpt_path, model, model_key="model") # Put model_key="" if its directly the model checkpoint
-            model.rope_embeddings.reset_parameters() # For RoPe initialization since it's a buffer it might not be loaded
+            load_from_checkpoint(
+                args.checkpoint.init_ckpt_path, model, model_key="model"
+            )  # Put model_key="" if its directly the model checkpoint
+            model.rope_embeddings.reset_parameters()  # For RoPe initialization since it's a buffer it might not be loaded
         else:
             with torch.random.fork_rng(devices=[torch.cuda.current_device()]):
                 torch.manual_seed(args.model.seed)
@@ -331,12 +241,21 @@ def train(args: TrainArgs):
         metric_logger = context_stack.enter_context(
             MetricLogger(Path(args.dump_dir) / "metrics.jsonl", args)
         )
-        data_loader = context_stack.enter_context(
-            build_dataloader_from_args(
-                args.data,
-                state=train_state.data_loader_state,
+
+        if len(args.synthetic_tasks_generation_args.synthetic_tasks) > 0:
+            data_loader = context_stack.enter_context(
+                build_dataloader(
+                    args.synthetic_tasks_generation_args,
+                    args.synthetic_tasks_formatting_args,
+                )
             )
-        )
+        else:
+            data_loader = context_stack.enter_context(
+                build_dataloader_from_args(
+                    args.data,
+                    state=train_state.data_loader_state,
+                )
+            )
         torch_profiler = context_stack.enter_context(
             maybe_run_profiler(args.dump_dir, model, args.profiling)
         )
@@ -353,16 +272,14 @@ def train(args: TrainArgs):
             curr_lr = float(optimizer.param_groups[0]["lr"])
             data_load_start = timer()
             batch, train_state.data_loader_state = next(data_loader)
-            batch = torch.tensor(
-                batch,
-                dtype=torch.long,
-            )
+            batch = torch.tensor(batch, dtype=torch.long)
 
             if every_n_steps(train_state, args.gc_collect_freq, acc_step=0):
                 logger.info("garbage collection")
                 # we do garbage collection manually otherwise different processes
                 # run the GC at different times so they slow down the whole pipeline
                 gc.collect()
+                logger.info("garbage collection complete")
 
             input_ids = batch[:, :, 0].cuda()
             labels = batch[:, :, 1].cuda()
@@ -370,7 +287,6 @@ def train(args: TrainArgs):
             nwords_since_last_log += input_ids.numel()
 
             bsz, seqlen = labels.shape
-
             # forward
             start_timer = torch.cuda.Event(enable_timing=True)
             end_timer = torch.cuda.Event(enable_timing=True)
@@ -386,9 +302,9 @@ def train(args: TrainArgs):
                 # Here we do a fake forward and backward pass on a smaller
                 # batch size to avoid OOM
                 # This assumes the model has no stateful layers (batch norm..)
-                assert (
-                    next(model.parameters()).grad is None
-                ), "Can't probe model if grads are not reset"
+                assert next(model.parameters()).grad is None, (
+                    "Can't probe model if grads are not reset"
+                )
 
                 with probe:
                     probe.metadata = {
@@ -408,9 +324,9 @@ def train(args: TrainArgs):
                     # We zero grads to cancel this fake step
                     optimizer.zero_grad()
 
-                assert (
-                    next(model.parameters()).grad is None
-                ), "Probe model shouldn't have grads at this point"
+                assert next(model.parameters()).grad is None, (
+                    "Probe model shouldn't have grads at this point"
+                )
 
             loss = model(input_ids, labels)
 
@@ -433,7 +349,9 @@ def train(args: TrainArgs):
                 )
 
                 grad_norm = (
-                    grad_norm.full_tensor() if isinstance(grad_norm, DTensor) else grad_norm
+                    grad_norm.full_tensor()
+                    if isinstance(grad_norm, DTensor)
+                    else grad_norm
                 ).item()
 
                 optimizer.step()
@@ -517,7 +435,7 @@ def train(args: TrainArgs):
                 logger.info(
                     f"step: {train_state.step}"
                     f"  acc: {train_state.acc_step}"
-                    f"  loss: {round(loss.item(),4):>7}"
+                    f"  loss: {round(loss.item(), 4):>7}"
                     f"  grad: {grad_norm:.2e}"
                     f"  flops: {FLOPS:.2e}"
                     f"  wps: {wps:.2e}"
@@ -525,7 +443,7 @@ def train(args: TrainArgs):
                     f"  data: {data_load_time:>5}"
                     f"  lr: {curr_lr:.2e}"
                     f"  mem: {gpu_mem_stats.max_active_pct:.0f}%"
-                    f"  pow: {gpu_mem_stats.power_draw/1000} W"
+                    f"  pow: {gpu_mem_stats.power_draw / 1000} W"
                 )
 
             saved = False
@@ -540,9 +458,10 @@ def train(args: TrainArgs):
                     device_mesh=world_mesh,
                 )
 
-            if args.eval is not None and (every_n_steps(
-                train_state, args.checkpoint.eval.every, acc_step=0
-            ) or every_n_steps(train_state, args.steps, acc_step=0)):
+            if args.eval is not None and (
+                every_n_steps(train_state, args.checkpoint.eval.every, acc_step=0)
+                or every_n_steps(train_state, args.steps, acc_step=0)
+            ):
                 from apps.main.eval import (
                     launch_eval,
                     EVAL_FOLDER_NAME,

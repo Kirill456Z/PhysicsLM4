@@ -1,0 +1,71 @@
+from data_synthetic_pretrain.tasks.models import BaseSyntheticTaskConfig, SynteticTask
+from data_synthetic_pretrain.tasks.base_task import BaseSynteticTaskGenerator
+from typing import override
+import numpy as np
+from data_synthetic_pretrain.graph.graph import Graph
+from data_synthetic_pretrain.graph.models import NodeWord
+
+class DepoGenerationArgs(BaseSyntheticTaskConfig):
+    max_nodes: int
+    max_hops: int
+    num_queries: int
+    query_token_base: int
+
+class DepoSynteticTask(SynteticTask):
+    query_nodes: list[NodeWord]
+    answer_nodes: list[NodeWord]
+    num_hops: list[int]
+
+class DepoRefactored(BaseSynteticTaskGenerator):
+
+    name = "depo"
+
+    def __init__(self, config: DepoGenerationArgs):
+        super().__init__(config)
+    
+    @classmethod
+    def build_from_dict(cls, config: dict) -> BaseSynteticTaskGenerator:
+        return cls(DepoGenerationArgs.model_validate(config))
+
+    def resolve_for_query(self, graph: Graph, query_node: NodeWord, num_steps: int) -> NodeWord:
+        while num_steps > 0:
+            query_node = graph.edges[query_node][0]
+            num_steps -= 1
+        return query_node
+
+    def _sample_num_nodes(self):
+        node_choices = list(range(3, self.config.max_nodes + 1))
+        power, bias = 1, pow(self.config.max_nodes, 0.5)
+        weights = [1.0 / (pow(i, power) + bias + 1e-12) for i in node_choices]
+        total = sum(weights)
+        weights = [w / total for w in weights]
+        return np.random.choice(node_choices, size=1, p=weights)[0]
+
+    @override
+    def generate(self) -> SynteticTask:
+        num_nodes = self._sample_num_nodes()
+
+        graph = self.generate_graph(num_nodes=num_nodes)
+        query_nodes = np.random.choice(graph.nodes, size=self.config.num_queries)
+        num_hops = np.random.randint(1, self.config.max_hops + 1, size=self.config.num_queries)
+        context = [self.config.task_index] + graph.encode()
+        loss_mask = [0] * len(context)
+        answer_nodes = []
+        for i, num_hops_cur in enumerate(num_hops):
+            answer = self.resolve_for_query(graph, query_nodes[i], num_hops_cur)
+            answer_nodes.append(answer)
+            context.append(self.config.query_token_base + num_hops_cur)
+            context += list(query_nodes[i].tokens)
+            context += list(answer.tokens)
+
+            loss_mask.extend([0] * (len(query_nodes[i].tokens) + 1))
+            loss_mask.extend([1] * len(answer.tokens))
+        return DepoSynteticTask(
+            task_index=self.config.task_index,
+            context=context,
+            loss_mask=loss_mask,
+            graph=graph,
+            query_nodes=query_nodes,
+            answer_nodes=answer_nodes,
+            num_hops=num_hops,
+        )

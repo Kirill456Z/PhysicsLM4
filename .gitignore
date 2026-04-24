@@ -1,0 +1,10 @@
+recipe_stashes/
+.env
+.DS_Store
+*.ipynb
+.vscode/*
+.cursor/*
+**/__pycache__/*
+physicslm4.egg-info/*
+plots/*
+reports/*

@@ -1,0 +1,22 @@
+notebooks/
+plots/
+.git/
+**/.DS_Store
+.vscode/
+.cursor/
+.pytest_cache/
+recipe_stashes/
+.venv/*
+# Results, caches, and data - not needed in image
+canon_linear_results/
+canon_llama_results/
+data-reallife-eval/
+watch_*/
+**/__pycache__/
+**/*.pyc
+tests/*
+# Reports / slides - not needed in image
+reports/
+physicslm4.egg-info/*
+
+.DS_Store

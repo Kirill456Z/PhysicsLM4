@@ -49,6 +49,11 @@ class LoggingArgs:
     freq: int = 10  # Log every freq optimizer steps
     acc_freq: Optional[int] = None  # Log every acc_freq gradient accumulation steps
 
+    # Diagnostic metrics frequency tiers (0 to disable)
+    diagnostics_easy_freq: int = 50    # grad norms, UWR, canon kernel stats, instability
+    diagnostics_medium_freq: int = 500  # activation/residual stats (probe steps)
+    diagnostics_heavy_freq: int = 2000  # covariance spectra, sharpness (probe steps)
+
     wandb: Optional[WandbArgs] = None
 
 

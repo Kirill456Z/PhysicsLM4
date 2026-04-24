@@ -83,6 +83,7 @@ data:
     add_eos: false
 
 synthetic_tasks_generation_args:
+    eval_dump_dir: /scratch/zemlians/physics4lm/synthetic_eval
     synthetic_tasks:
         - task_name: "depo"
           generation_args:

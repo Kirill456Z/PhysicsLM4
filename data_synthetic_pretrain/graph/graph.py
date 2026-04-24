@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import List
 from data_synthetic_pretrain.graph.models import NodeWord, EncodingConfig, EncodingFormat
 import numpy as np
+from pydantic import BaseModel
 
-class Graph:
-    def __init__(self, nodes: list[NodeWord], edges: dict[NodeWord, List[NodeWord]], adj_list_encoding_config: EncodingConfig):
-        self.nodes : list[NodeWord] = nodes
-        self.edges : dict[NodeWord, List[NodeWord]] = edges
-        self.adj_list_encoding_config: EncodingConfig = adj_list_encoding_config
+class Graph(BaseModel):
+    nodes : list[NodeWord]
+    edges : dict[NodeWord, List[NodeWord]]
+    adj_list_encoding_config: EncodingConfig
     
     def adjacency_list(self) -> list[int]:
         """Return adjacency list encoding: node_word + node_to_neighbors_sep + neighbor_word + pair_sep."""

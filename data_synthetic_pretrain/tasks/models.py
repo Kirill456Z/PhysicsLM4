@@ -5,9 +5,10 @@ from data_synthetic_pretrain.graph.graph import Graph
 class BaseSyntheticTaskConfig(BaseModel):
     task_index: int
     graph_generator_config: GraphGeneratorConfig
+    eval_dump_dir: str | None = None
 
 class SynteticTask(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
     graph: Graph
     task_index: int

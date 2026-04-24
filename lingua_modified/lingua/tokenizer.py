@@ -275,7 +275,7 @@ class HuggingFaceTokenizer(Tokenizer):
 def build_tokenizer(name: str, path: Optional[str] = None) -> Tokenizer:
     if name == "bytes":
         return ByteTokenizer()
-    elif name == "mock":
+    elif name == "mock" or name == "none":
         return MockTokenizer()
     elif name == "gpt2":
         return GPT2Tokenizer()

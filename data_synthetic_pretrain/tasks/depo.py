@@ -5,29 +5,34 @@ import numpy as np
 from data_synthetic_pretrain.graph.graph import Graph
 from data_synthetic_pretrain.graph.models import NodeWord
 
+
 class DepoGenerationArgs(BaseSyntheticTaskConfig):
     max_nodes: int
     max_hops: int
     num_queries: int
     query_token_base: int
 
+
 class DepoSynteticTask(SynteticTask):
     query_nodes: list[NodeWord]
     answer_nodes: list[NodeWord]
     num_hops: list[int]
+    answer_start_index: int
+
 
 class DepoRefactored(BaseSynteticTaskGenerator):
-
     name = "depo"
 
     def __init__(self, config: DepoGenerationArgs):
         super().__init__(config)
-    
+
     @classmethod
     def build_from_dict(cls, config: dict) -> BaseSynteticTaskGenerator:
         return cls(DepoGenerationArgs.model_validate(config))
 
-    def resolve_for_query(self, graph: Graph, query_node: NodeWord, num_steps: int) -> NodeWord:
+    def resolve_for_query(
+        self, graph: Graph, query_node: NodeWord, num_steps: int
+    ) -> NodeWord:
         while num_steps > 0:
             query_node = graph.edges[query_node][0]
             num_steps -= 1
@@ -42,15 +47,28 @@ class DepoRefactored(BaseSynteticTaskGenerator):
         return np.random.choice(node_choices, size=1, p=weights)[0]
 
     @override
-    def generate(self) -> SynteticTask:
-        num_nodes = self._sample_num_nodes()
+    def generate(
+        self,
+        num_nodes: int | None = None,
+        num_hops: int | None = None,
+        num_query_nodes: int | None = None,
+    ) -> DepoSynteticTask:
+        num_nodes = self._sample_num_nodes() if num_nodes is None else num_nodes
+        num_hops = (
+            np.random.randint(1, self.config.max_hops + 1, size=self.config.num_queries)
+            if num_hops is None
+            else num_hops
+        )
+        num_query_nodes = (
+            self.config.num_queries if num_query_nodes is None else num_query_nodes
+        )
 
         graph = self.generate_graph(num_nodes=num_nodes)
-        query_nodes = np.random.choice(graph.nodes, size=self.config.num_queries)
-        num_hops = np.random.randint(1, self.config.max_hops + 1, size=self.config.num_queries)
+        query_nodes = np.random.choice(graph.nodes, size=num_query_nodes)
         context = [self.config.task_index] + graph.encode()
         loss_mask = [0] * len(context)
         answer_nodes = []
+        answer_start_index = len(context) + 2
         for i, num_hops_cur in enumerate(num_hops):
             answer = self.resolve_for_query(graph, query_nodes[i], num_hops_cur)
             answer_nodes.append(answer)
@@ -68,4 +86,35 @@ class DepoRefactored(BaseSynteticTaskGenerator):
             query_nodes=query_nodes,
             answer_nodes=answer_nodes,
             num_hops=num_hops,
+            answer_start_index=answer_start_index,
         )
+
+    @override
+    def _generate_eval_set(self) -> list[DepoSynteticTask]:
+        eval_set = []
+        num_hops = 1
+        while num_hops <= self.config.max_hops:
+            eval_set.extend(
+                self.generate(num_hops=num_hops, num_nodes=self.config.max_nodes, num_query_nodes=1)
+            )
+            num_hops *= 2
+        for eval_task in eval_set:
+            eval_task.context = eval_task.context[:eval_task.answer_start_index]
+        return eval_set
+
+    @override
+    def evaluate(
+        self, task: DepoSynteticTask, generation: list[int]
+    ) -> dict[str, float]:
+        generation = np.array(generation)
+        is_oov_token = generation > 2 * self.config.base_vocab_size
+        if np.any(is_oov_token):
+            truncated_generation = generation[:is_oov_token.argmax() + 1]
+        else:
+            truncated_generation = generation
+        correct = (truncated_generation == task.answer_nodes)
+        prefix_correct = 0.0 if not correct[0] else np.argmin(correct) + 1
+        return {
+            f"hop_{task.num_hops[0]}/accuracy": np.all(correct),
+            f"hop_{task.num_hops[0]}/prefix_accuracy": prefix_correct,
+        }

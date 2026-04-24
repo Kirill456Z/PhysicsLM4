@@ -10,6 +10,7 @@ class SynteticTaskGenerationArgs:
 @dataclass
 class SyntheticTasksGenerationArgs:
     synthetic_tasks: list[SynteticTaskGenerationArgs] = field(default_factory=list)
+    eval_dump_dir: str | None = None
 
 @dataclass
 class SyntheticTasksFormattingArgs:

@@ -174,6 +174,13 @@ class EvalHarnessLM(LM):
         return results
     
 
+def eval_on_synthetic_tasks(generator, task_generators: list[BaseSynteticTaskGenerator]):
+    for task_generator in task_generators:
+        eval_set = task_generator.get_eval_set()
+        generations, _, _ = generator.generate(eval_set)
+        metrics = task_generator.evaluate(generations)
+
+
 def eval_on_val(generator, val_args: ValidationArgs, train_cfg):
     srcs = {}
     for src in val_args.sources:

@@ -82,10 +82,10 @@ class TestSyntheticDataLoader:
         padded[:n] = syntehtic_task.context
         m = np.zeros(2048, dtype=int)
         m[:n] = syntehtic_task.loss_mask
-        m = np.roll(m, 1)
-        m[0] = 0
-        expected = np.roll(padded, 1)
-        expected[0] = dataloader.formatting_args.pad_token
+        m = np.roll(m, -1)
+        m[-1] = 0
+        expected = np.roll(padded, -1)
+        expected[-1] = dataloader.formatting_args.pad_token
         expected[m == 0] = ignore
         assert np.array_equal(labels, expected)
 

@@ -276,13 +276,6 @@ def train(args: TrainArgs):
             data_load_start = timer()
             batch, train_state.data_loader_state = next(data_loader)
             batch = torch.tensor(batch, dtype=torch.long)
-        
-            if every_n_steps(train_state, 20, acc_step=0):
-                logger.info("batch observability")
-                # .tolist() avoids torch print/summarization APIs (unavailable in some builds)
-                logger.info(f"input_ids: {batch[0, :, 0].tolist()}")
-                logger.info(f"labels: {batch[0, :, 1].tolist()}")
-       
 
             if every_n_steps(train_state, args.gc_collect_freq, acc_step=0):
                 logger.info("garbage collection")

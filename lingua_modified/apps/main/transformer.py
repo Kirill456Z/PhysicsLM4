@@ -173,10 +173,15 @@ class LMTransformer(BaseTransformer):
             weight_plain = _to_plain_for_fla(weight)
             # Align dtypes: full_tensor() can return float32 while activations are bf16
             weight_plain = weight_plain.to(h_norm_plain.dtype)
-            return self._fused_ce_loss(h_norm_plain, target, weight_plain, None)
+            # Same masking as nn.CrossEntropyLoss(ignore_index=-100): FLA kernel skips these
+            # positions in loss and gradient; mean reduction uses only non-ignored tokens.
+            target_plain = _to_plain_for_fla(target).to(torch.long)
+            return self._fused_ce_loss(h_norm_plain, target_plain, weight_plain, None)
         logits = self.output(h_norm)
         if target is not None:
-            return cross_entropy(logits, target, z_loss=self.z_loss)
+            return cross_entropy(
+                logits, target, z_loss=self.z_loss, ignore_index=-100
+            )
         return logits
 
     def reset_parameters(self, init_std=None):

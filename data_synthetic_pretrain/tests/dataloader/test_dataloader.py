@@ -72,11 +72,22 @@ class TestSyntheticDataLoader:
         formatted_sample = dataloader._format_sample(syntehtic_task)
         assert formatted_sample.shape == (2048, 2)
         context = formatted_sample[:, 0]
-        loss_mask = formatted_sample[:, 1]
+        labels = formatted_sample[:, 1]
+        ignore = dataloader.formatting_args.no_train_label_token
         assert np.all(context[: len(syntehtic_task.context)] == np.array(syntehtic_task.context))
         assert np.all(context[len(syntehtic_task.context) :] == 0)
-        assert np.all(loss_mask[: len(syntehtic_task.loss_mask)] == np.array(syntehtic_task.loss_mask))
-        assert np.all(loss_mask[len(syntehtic_task.loss_mask) :] == 0)
+        # labels: roll(context) with position 0 and all non-train positions set to ignore index
+        n = len(syntehtic_task.context)
+        padded = np.zeros(2048, dtype=context.dtype)
+        padded[:n] = syntehtic_task.context
+        m = np.zeros(2048, dtype=int)
+        m[:n] = syntehtic_task.loss_mask
+        m = np.roll(m, 1)
+        m[0] = 0
+        expected = np.roll(padded, 1)
+        expected[0] = dataloader.formatting_args.pad_token
+        expected[m == 0] = ignore
+        assert np.array_equal(labels, expected)
 
     def test_sync_iter_batch_shape(self, syntehtic_task, dataloader):
         dataloader.generators[0].generate.return_value = syntehtic_task

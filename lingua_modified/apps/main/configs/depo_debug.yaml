@@ -71,6 +71,7 @@ data:
     n_views: 2
     n_workers: 8
     pad_token: 0
+    no_train_label_token: -100
 
     load_async: true
     seed: 43

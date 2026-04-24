@@ -85,7 +85,12 @@ class SyntheticDataLoader:
                 mode="constant",
                 constant_values=0,
             )
-        return np.stack([context, loss_mask], axis=1)
+        labels = np.roll(context.copy(), 1)
+        loss_mask = np.roll(loss_mask, 1)
+        loss_mask[0] = 0
+        labels[0] = self.formatting_args.pad_token
+        labels[loss_mask == 0] = self.formatting_args.no_train_label_token
+        return np.stack([context, labels], axis=1)
 
     def _sample_and_format(self) -> np.ndarray:
         generator = np.random.choice(self.generators, p=self.weights)

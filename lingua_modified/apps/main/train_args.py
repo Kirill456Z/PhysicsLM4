@@ -226,6 +226,7 @@ def _apply_data_to_synthetic_tasks_formatting_args(args: TrainArgs) -> None:
     fmt.pad_token = d.pad_token
     fmt.prefetch_size = d.prefetch_size
     fmt.n_workers = d.n_workers
+    fmt.no_train_label_token = d.no_train_label_token
 
 
 def prepare_train_args(args: TrainArgs):

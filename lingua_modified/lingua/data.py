@@ -741,6 +741,7 @@ class DataArgs:
     tokenizer: TokenizerArgs = field(default_factory=TokenizerArgs)
     n_workers: int = 8
     pad_token: int = 0
+    no_train_label_token: int = -100
 
 
 def init_dataloader_state_from_args(

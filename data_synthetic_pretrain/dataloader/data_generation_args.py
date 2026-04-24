@@ -18,3 +18,4 @@ class SyntheticTasksFormattingArgs:
     pad_token: int = 0
     prefetch_size: int = 32
     n_workers: int = 8
+    no_train_label_token: int = -100

@@ -376,11 +376,19 @@ class PackedCausalTransformerGenerator:
 
     @torch.inference_mode()
     def generate(self, prompts):
-        # Tokenize
-        # Zeyuan's edit note: I changed add_bos=True to add_bos=False, to make this consistent with the official lm_eval implementation (HFLM code)
-        prompts = [
-            self.tokenizer.encode(p, add_bos=False, add_eos=False) for p in prompts
-        ]
+        prompts_are_tokenized = all(
+            isinstance(p, (list, tuple, torch.Tensor)) and not isinstance(p, str)
+            for p in prompts
+        )
+        if prompts_are_tokenized:
+            prompts = [
+                p.tolist() if isinstance(p, torch.Tensor) else list(p) for p in prompts
+            ]
+        else:
+            # Zeyuan's edit note: I changed add_bos=True to add_bos=False, to make this consistent with the official lm_eval implementation (HFLM code)
+            prompts = [
+                self.tokenizer.encode(p, add_bos=False, add_eos=False) for p in prompts
+            ]
         # Truncate
         max_seqlen = (
             self.max_tokens
@@ -419,6 +427,7 @@ class PackedCausalTransformerGenerator:
                 generated_tokens[seq_id].append(tok)
 
             current_token = start_token
+            eos_id = getattr(self.tokenizer, "eos_id", None)
             for i in range(1, self.max_gen_len):
 
                 next_logits = self.generate_next_token(current_token)
@@ -435,15 +444,17 @@ class PackedCausalTransformerGenerator:
                         contains_end_string = any(
                             [e in current_end_str for e in self.until]
                         )
-                        is_done[seq_id] = (
-                            contains_end_string or tok == self.tokenizer.eos_id
-                        )
+                        eos_reached = eos_id is not None and tok == eos_id
+                        is_done[seq_id] = contains_end_string or eos_reached
                 if all(is_done):
                     break
 
                 current_token = next_token
 
-            generation.extend([self.tokenizer.decode(g) for g in generated_tokens])
+            if prompts_are_tokenized:
+                generation.extend(generated_tokens)
+            else:
+                generation.extend([self.tokenizer.decode(g) for g in generated_tokens])
 
             for p, logit in zip(
                 batch, prompt_logits.squeeze(0).split(lengths.tolist())

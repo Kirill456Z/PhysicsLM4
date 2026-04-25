@@ -8,6 +8,18 @@ class NodeWord(BaseModel):
     model_config = ConfigDict(frozen=True)
     tokens: tuple[int, ...]
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_from_legacy_key_string(cls, data):
+        # During JSON round-trips dict keys become strings (e.g. "tokens=(1, 2, 3)").
+        if isinstance(data, str) and data.startswith("tokens=(") and data.endswith(")"):
+            tokens_str = data[len("tokens=(") : -1].strip()
+            if not tokens_str:
+                return {"tokens": tuple()}
+            tokens = tuple(int(tok.strip()) for tok in tokens_str.split(","))
+            return {"tokens": tokens}
+        return data
+
 class SpecialToken(BaseModel):
     token: int
 

@@ -16,7 +16,8 @@ class NodeWord(BaseModel):
             tokens_str = data[len("tokens=(") : -1].strip()
             if not tokens_str:
                 return {"tokens": tuple()}
-            tokens = tuple(int(tok.strip()) for tok in tokens_str.split(","))
+            # Handle Python tuple repr forms including singleton trailing comma: "(20,)".
+            tokens = tuple(int(tok.strip()) for tok in tokens_str.split(",") if tok.strip())
             return {"tokens": tokens}
         return data
 

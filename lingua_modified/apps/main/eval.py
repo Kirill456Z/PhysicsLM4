@@ -181,7 +181,7 @@ def eval_on_synthetic_tasks(generator, task_generators: list[BaseSynteticTaskGen
     all_metrics = {}
     for task_generator in task_generators:
         eval_set = task_generator.get_eval_set()
-        generations, _, _ = generator.generate([eval_sample for eval_sample in eval_set.context])
+        generations, _, _ = generator.generate([eval_sample.context for eval_sample in eval_set])
         logger.info(f"Generated {len(generations)} generations for {task_generator.name}")
         logger.info(f"Generations: {generations}")
         metrics = task_generator.batch_evaluate(generations)

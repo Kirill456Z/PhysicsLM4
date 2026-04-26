@@ -66,10 +66,10 @@ data:
         depo: 1.0
 
     batch_size: 256
-    prefetch_size: 1024
+    prefetch_size: 2048
     seq_len: 1024
     n_views: 2
-    n_workers: 8
+    n_workers: 16
     pad_token: 0
     no_train_label_token: -100
 
@@ -122,7 +122,7 @@ checkpoint:
 logging:
     freq: 10
     acc_freq: 10
-    diagnostics_easy_freq: 500
+    diagnostics_easy_freq: 300
     diagnostics_medium_freq: 5000
     diagnostics_heavy_freq: 0
     wandb:

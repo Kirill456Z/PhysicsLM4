@@ -74,7 +74,7 @@ class DepoRefactored(BaseSynteticTaskGenerator):
             context.append(self.config.query_token_base + num_hops_cur)
             context += list(query_nodes[i].tokens)
             if answer_start_index is None:
-                answer_start_index = len(context) + 1
+                answer_start_index = len(context)
             context += list(answer.tokens)
 
             loss_mask.extend([0] * (len(query_nodes[i].tokens) + 1))

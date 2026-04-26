@@ -36,6 +36,7 @@ export default function DataInspector({ sample }: Props) {
   const B = sample.base_vocab_size
   const tokens = sample.context_padded
   const labels = sample.labels
+  const { answer_start_index: answerAt } = sample
 
   const labelCount = labels.filter((l) => l !== -100).length
   const padCount = tokens.filter((t) => t === 0).length
@@ -65,6 +66,7 @@ export default function DataInspector({ sample }: Props) {
           <thead className="sticky top-0 bg-slate-900 z-10">
             <tr className="text-slate-500 text-left">
               <th className="px-3 py-1.5 font-normal">#</th>
+              <th className="px-3 py-1.5 font-normal">is_eval_context</th>
               <th className="px-3 py-1.5 font-normal">token</th>
               <th className="px-3 py-1.5 font-normal">type</th>
               <th className="px-3 py-1.5 font-normal">label</th>
@@ -77,10 +79,12 @@ export default function DataInspector({ sample }: Props) {
               const hasLabel = label !== -100
               const tokInfo = interpretToken(tok, B)
               const lblInfo = interpretToken(label, B)
+              const isEvalContext = i < answerAt ? 1 : 0
 
               return (
                 <tr key={i} className={hasLabel ? 'bg-emerald-950/40' : ''}>
                   <td className="px-3 py-0.5 text-slate-600 tabular-nums select-none">{i}</td>
+                  <td className="px-3 py-0.5 font-mono tabular-nums text-slate-500">{isEvalContext}</td>
                   <td className={`px-3 py-0.5 font-mono tabular-nums ${tokInfo.colorClass}`}>{tok}</td>
                   <td className="px-3 py-0.5 text-slate-500">{tokInfo.type}</td>
                   <td className={`px-3 py-0.5 font-mono tabular-nums ${hasLabel ? lblInfo.colorClass : 'text-slate-700'}`}>

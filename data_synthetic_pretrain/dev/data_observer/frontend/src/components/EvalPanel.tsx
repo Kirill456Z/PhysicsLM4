@@ -58,7 +58,7 @@ export default function EvalPanel({ sample }: Props) {
         task_index: sample.task_index,
         context: sample.context,
         loss_mask: sample.loss_mask,
-        answer_start_index: ts.answer_start_index,
+        answer_start_index: sample.answer_start_index,
         query_nodes: ts.query_nodes,
         answer_nodes: ts.answer_nodes,
         num_hops: ts.num_hops,
@@ -92,7 +92,7 @@ export default function EvalPanel({ sample }: Props) {
             Expected answer tokens
           </h3>
           <p className="text-xs text-slate-500 mb-2">
-            The ground-truth continuation starting at position {ts.answer_start_index}:
+            The ground-truth continuation starting at position {sample.answer_start_index}:
           </p>
           <div className="flex flex-wrap gap-2">
             {ts.answer_nodes.map((node, i) => (

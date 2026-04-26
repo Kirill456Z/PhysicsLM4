@@ -133,4 +133,7 @@ logging:
 eval:
   name: "mixed_eval"
   dump_dir: /scratch/zemlians/physics4lm/mixed_eval
+  generator:
+    max_gen_len: 10
+    show_progress: true
 

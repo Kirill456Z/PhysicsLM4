@@ -33,6 +33,7 @@ export interface SampleResponse {
   context_padded: number[]
   labels: number[]
   task_specific: TaskSpecific
+  answer_start_index: number
 }
 
 export interface BatchResponse {

@@ -58,15 +58,17 @@ def _sample_to_dict(sample, formatted: np.ndarray, task_name: str, gen_args: dic
         "context_padded": context_padded,
         "labels": labels,
         "task_specific": None,
+        "answer_start_index": int(sample.answer_start_index),
     }
 
     if isinstance(sample, DepoSynteticTask):
+        asi = int(sample.answer_start_index)
         result["task_specific"] = {
             "type": "depo",
             "query_nodes": [list(n.tokens) for n in sample.query_nodes],
             "answer_nodes": [list(n.tokens) for n in sample.answer_nodes],
             "num_hops": [int(h) for h in sample.num_hops],
-            "answer_start_index": int(sample.answer_start_index),
+            "answer_start_index": asi,
         }
 
     return result

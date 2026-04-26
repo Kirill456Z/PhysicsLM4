@@ -73,7 +73,9 @@ class BaseSynteticTaskGenerator:
     @abstractmethod
     def batch_evaluate(self, generations: list[list[int]]) -> dict[str, float]:
         results = []
-        for task, generation in zip[tuple[SynteticTask, list[int]]](self.eval_set, generations):
+        logger.info(f"Evaluating {len(self.eval_set)} tasks")
+        logger.info(f"First generation: {generations[0]}")
+        for task, generation in zip(self.eval_set, generations):
             results.append(self.evaluate(task, generation))
         results = self._aggregate_eval_results(results)
         return {

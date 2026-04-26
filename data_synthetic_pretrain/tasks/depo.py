@@ -2,6 +2,7 @@ from data_synthetic_pretrain.tasks.models import BaseSyntheticTaskConfig, Syntet
 from data_synthetic_pretrain.tasks.base_task import BaseSynteticTaskGenerator
 from typing import override
 import numpy as np
+from pydantic import field_validator
 from data_synthetic_pretrain.graph.graph import Graph
 from data_synthetic_pretrain.graph.models import NodeWord
 
@@ -17,6 +18,26 @@ class DepoSynteticTask(SynteticTask):
     query_nodes: list[NodeWord]
     answer_nodes: list[NodeWord]
     num_hops: list[int]
+
+    @field_validator("query_nodes", "answer_nodes", mode="before")
+    @classmethod
+    def _lists_of_nodeword(cls, v):
+        if v is None:
+            return v
+        if isinstance(v, np.ndarray):
+            v = v.tolist()
+        if not isinstance(v, list):
+            return v
+        return [NodeWord.model_validate(x) if isinstance(x, dict) else x for x in v]
+
+    @field_validator("num_hops", mode="before")
+    @classmethod
+    def _num_hops_to_ints(cls, v):
+        if v is None:
+            return v
+        if isinstance(v, (np.ndarray, list, tuple)):
+            return [int(x) for x in v]
+        return v
 
 
 class DepoRefactored(BaseSynteticTaskGenerator):

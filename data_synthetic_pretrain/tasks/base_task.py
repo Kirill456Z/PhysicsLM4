@@ -63,7 +63,7 @@ class BaseSynteticTaskGenerator:
     def evaluate(self, task: SynteticTask, generation: list[int]) -> dict[str, float]:
         ...
 
-    def _aggregate_eval_results(results: list[dict[str, float]]) -> dict[str, float]:
+    def _aggregate_eval_results(self, results: list[dict[str, float]]) -> dict[str, float]:
         aggregated_results = defaultdict(list)
         for result in results:
             for key, value in result.items():

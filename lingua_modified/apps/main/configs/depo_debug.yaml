@@ -50,7 +50,7 @@ model:
     vocab_size: 512
 
     rope_theta: 10000.0
-    canon_set: ""
+    canon_set: "ABCD"
     use_fast_conv1d:  true
     canon_kernel: 4
     canon_init: default

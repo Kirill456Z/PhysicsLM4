@@ -112,7 +112,7 @@ class ShortestPathTaskGenerator(BaseSynteticTaskGenerator):
         eval_set = []
         for _ in range(self.config.num_eval_samples):
             eval_set.append(
-                self.generate(num_nodes=self.config.max_nodes, distance=self.config.max_distance)
+                self.generate()
             )
         for eval_task in eval_set:
             eval_task.context = eval_task.context[:eval_task.answer_start_index]

@@ -62,6 +62,7 @@ model:
 # Data loading settings
 data:
     root_dir: /scratch/zemlians/physics4lm
+    eval_dump_dir: /scratch/zemlians/physics4lm/synthetic_eval
     sources:
         depo: 1.0
 

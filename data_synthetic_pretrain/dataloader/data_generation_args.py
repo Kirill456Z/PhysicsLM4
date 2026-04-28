@@ -26,6 +26,7 @@ class SyntheticTasksFormattingArgs:
     prefetch_size: int = 32
     n_workers: int = 8
     no_train_label_token: int = -100
+    eval_dump_dir: str | None = None
 
 
 def load_generation_args_from_yaml(path: str | Path | None = None) -> SyntheticTasksGenerationArgs:

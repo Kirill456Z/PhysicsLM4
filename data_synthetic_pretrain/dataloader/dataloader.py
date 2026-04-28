@@ -169,7 +169,7 @@ def get_generators(
     eval_dump_dir: str | None = None,
 ):
     generation_args = load_generation_args_from_yaml(tasks_config_path)
-    effective_eval_dump_dir = eval_dump_dir if eval_dump_dir is not None else generation_args.eval_dump_dir
+    effective_eval_dump_dir = eval_dump_dir if eval_dump_dir is not None else synthetic_tasks_formatting_args.eval_dump_dir
     generators = []
     weights = []
     for task_gen_args in generation_args.synthetic_tasks:

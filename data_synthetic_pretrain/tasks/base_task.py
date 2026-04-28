@@ -29,7 +29,7 @@ class BaseSynteticTaskGenerator:
 
             if not local_dir.exists() or not eval_path.exists():
                 logger.info(f"Generating eval set for {self.config.task_name}")
-                local_dir.mkdir(parents=True, exist_ok=False)
+                local_dir.mkdir(parents=True, exist_ok=True)
                 config_path.write_text(self.config.model_dump_json() + "\n", encoding="utf-8")
                 self.eval_set = self._generate_eval_set()
                 with open(eval_path, "w", encoding="utf-8") as f:

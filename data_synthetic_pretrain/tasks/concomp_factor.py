@@ -47,7 +47,7 @@ class ConCompFactorTaskGenerator(BaseSynteticTaskGenerator):
         return cls(ConCompFactorGenerationArgs.model_validate(config))
 
     def max_generation_length(self):
-        return self.config.max_token_length * self.config.max_nodes + 1
+        return self.config.graph_generator_config.max_token_length * self.config.max_nodes + 1
 
     def _sample_num_nodes(self):
         node_choices = list(range(3, self.config.max_nodes + 1))

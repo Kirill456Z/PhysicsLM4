@@ -52,7 +52,7 @@ class BFSTaskGenerator(BaseSynteticTaskGenerator):
         return np.random.choice(node_choices, size=1, p=weights)[0]
 
     def max_generation_length(self):
-        return self.config.max_nodes_in_output * (self.config.max_token_length) + 1
+        return self.config.max_nodes_in_output * (self.config.graph_generator_config.max_token_length) + 1
 
     @override
     def generate(

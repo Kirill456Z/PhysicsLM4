@@ -61,7 +61,7 @@ class DepoRefactored(BaseSynteticTaskGenerator):
         return query_node
     
     def max_generation_length(self):
-        return self.config.max_token_length + 1
+        return self.config.graph_generator_config.max_token_length + 1
 
     def _sample_num_nodes(self):
         node_choices = list(range(3, self.config.max_nodes + 1))

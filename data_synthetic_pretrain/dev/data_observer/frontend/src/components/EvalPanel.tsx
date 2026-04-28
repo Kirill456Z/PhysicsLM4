@@ -49,22 +49,55 @@ export default function EvalPanel({ sample }: Props) {
   const evalMutation = useMutation({
     mutationFn: (generation: number[]) => {
       const ts = sample.task_specific
-      if (ts?.type !== 'depo') throw new Error('Evaluation only supported for depo tasks')
+      if (!ts) throw new Error('Evaluation requires task-specific metadata')
 
-      return api.evaluate({
+      const basePayload = {
         config_yaml: configYaml,
-        task_name: selectedTask,
+        task_name: sample.task_name || selectedTask,
         generation,
         task_index: sample.task_index,
         context: sample.context,
         loss_mask: sample.loss_mask,
         answer_start_index: sample.answer_start_index,
-        query_nodes: ts.query_nodes,
-        answer_nodes: ts.answer_nodes,
-        num_hops: ts.num_hops,
         graph_nodes: sample.graph.nodes.map((n) => n.tokens),
         graph_edges: sample.graph.edges,
-      })
+      }
+
+      if (ts.type === 'depo') {
+        return api.evaluate({
+          ...basePayload,
+          query_nodes: ts.query_nodes,
+          answer_nodes: ts.answer_nodes,
+          num_hops: ts.num_hops,
+        })
+      }
+
+      if (ts.type === 'bfs') {
+        return api.evaluate({
+          ...basePayload,
+          query_node: ts.query_node,
+          answer_sequence: ts.answer_sequence,
+        })
+      }
+
+      if (ts.type === 'shortest_path') {
+        return api.evaluate({
+          ...basePayload,
+          query_node: ts.query_node,
+          answer_nodes: ts.answer_nodes,
+        })
+      }
+
+      if (ts.type === 'concomp_factor') {
+        return api.evaluate({
+          ...basePayload,
+          answer_nodes: ts.answer_nodes,
+          components: ts.components,
+        })
+      }
+      
+
+      throw new Error('Unsupported task type for evaluation')
     },
   })
 
@@ -81,7 +114,13 @@ export default function EvalPanel({ sample }: Props) {
   const ts = sample.task_specific
   const answerTokens = ts?.type === 'depo'
     ? ts.answer_nodes.flat().join(' ')
-    : null
+    : ts?.type === 'bfs'
+      ? ts.answer_sequence.flat().join(' ')
+      : ts?.type === 'shortest_path'
+        ? ts.answer_nodes.slice(1).flat().join(' ')
+      : ts?.type === 'concomp_factor'
+        ? ts.answer_nodes.flat().join(' ')
+      : null
 
   return (
     <div className="flex flex-col h-full p-6 gap-6 overflow-auto">
@@ -100,6 +139,64 @@ export default function EvalPanel({ sample }: Props) {
                 {i > 0 && <span className="text-slate-600 text-xs">·</span>}
                 <span className="text-xs text-slate-500">hop {ts.num_hops[i]} answer:</span>
                 <span className="font-mono text-xs bg-slate-800 border border-emerald-800 text-emerald-300 rounded px-2 py-0.5">
+                  {node.join(' ')}
+                </span>
+              </div>
+            ))}
+          </div>
+          {answerTokens && (
+            <button
+              onClick={() => setInput(answerTokens)}
+              className="mt-2 text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2"
+            >
+              paste correct answer
+            </button>
+          )}
+        </section>
+      )}
+      {ts?.type === 'bfs' && (
+        <section>
+          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">
+            Expected BFS sequence tokens
+          </h3>
+          <p className="text-xs text-slate-500 mb-2">
+            The expected node-token sequence from the query node:
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {ts.answer_sequence.map((node, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                {i > 0 && <span className="text-slate-600 text-xs">·</span>}
+                <span className="text-xs text-slate-500">step {i + 1}:</span>
+                <span className="font-mono text-xs bg-slate-800 border border-blue-800 text-blue-300 rounded px-2 py-0.5">
+                  {node.join(' ')}
+                </span>
+              </div>
+            ))}
+          </div>
+          {answerTokens && (
+            <button
+              onClick={() => setInput(answerTokens)}
+              className="mt-2 text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2"
+            >
+              paste correct answer
+            </button>
+          )}
+        </section>
+      )}
+      {ts?.type === 'shortest_path' && (
+        <section>
+          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">
+            Expected shortest path tokens
+          </h3>
+          <p className="text-xs text-slate-500 mb-2">
+            The expected shortest path nodes (excluding the query node):
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {ts.answer_nodes.slice(1).map((node, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                {i > 0 && <span className="text-slate-600 text-xs">·</span>}
+                <span className="text-xs text-slate-500">step {i + 1}:</span>
+                <span className="font-mono text-xs bg-slate-800 border border-violet-800 text-violet-300 rounded px-2 py-0.5">
                   {node.join(' ')}
                 </span>
               </div>

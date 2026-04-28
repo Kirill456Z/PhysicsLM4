@@ -179,13 +179,16 @@ class MockAccelerator:
 
 def eval_on_synthetic_tasks(generator, task_generators: list[BaseSynteticTaskGenerator]):
     all_metrics = {}
+    max_gen_len = generator.max_gen_len
     for task_generator in task_generators:
+        generator.max_gen_len = task_generator.max_generation_length()
         eval_set = task_generator.get_eval_set()
         generations, _, _ = generator.generate([eval_sample.context for eval_sample in eval_set])
         logger.info(f"Generated {len(generations)} generations for {task_generator.name}")
         logger.info(f"Generations: {generations}")
         metrics = task_generator.batch_evaluate(generations)
         all_metrics.update(metrics)
+    generator.max_gen_len = max_gen_len
     return all_metrics
 
 

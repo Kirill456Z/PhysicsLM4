@@ -1,8 +1,10 @@
 import { useMemo, useRef } from 'react'
 import CytoscapeComponent from 'react-cytoscapejs'
-import type { GraphData, TaskSpecific } from '../types'
+import type { GraphData, SampleResponse, TaskSpecific } from '../types'
+import EvalPanel from './EvalPanel'
 
 interface Props {
+  sample: SampleResponse
   graph: GraphData
   taskSpecific: TaskSpecific
 }
@@ -44,6 +46,15 @@ const STYLESHEET: cytoscape.StylesheetStyle[] = [
     },
   },
   {
+    selector: 'node.query.answer',
+    style: {
+      'background-color': '#064e3b',
+      'border-color': '#10b981',
+      'border-width': 2,
+      'color': '#6ee7b7',
+    },
+  },
+  {
     selector: 'edge',
     style: {
       'width': 1.5,
@@ -67,7 +78,7 @@ function tokensKey(tokens: number[]): string {
   return JSON.stringify(tokens)
 }
 
-export default function GraphViewer({ graph, taskSpecific }: Props) {
+export default function GraphViewer({ sample, graph, taskSpecific }: Props) {
   const cyRef = useRef<cytoscape.Core | null>(null)
 
   const { elements, querySet, answerSet, renderedEdgeCount } = useMemo(() => {
@@ -76,6 +87,17 @@ export default function GraphViewer({ graph, taskSpecific }: Props) {
 
     if (taskSpecific?.type === 'depo') {
       taskSpecific.query_nodes.forEach((t) => querySet.add(tokensKey(t)))
+      taskSpecific.answer_nodes.forEach((t) => answerSet.add(tokensKey(t)))
+    }
+    if (taskSpecific?.type === 'bfs') {
+      querySet.add(tokensKey(taskSpecific.query_node))
+      taskSpecific.answer_sequence.forEach((t) => answerSet.add(tokensKey(t)))
+    }
+    if (taskSpecific?.type === 'shortest_path') {
+      querySet.add(tokensKey(taskSpecific.query_node))
+      taskSpecific.answer_nodes.forEach((t) => answerSet.add(tokensKey(t)))
+    }
+    if (taskSpecific?.type === 'concomp_factor') {
       taskSpecific.answer_nodes.forEach((t) => answerSet.add(tokensKey(t)))
     }
 
@@ -127,44 +149,50 @@ export default function GraphViewer({ graph, taskSpecific }: Props) {
   }, [graph, taskSpecific])
 
   return (
-    <div className="relative h-full bg-slate-950">
-      <CytoscapeComponent
-        key={JSON.stringify(graph)}
-        elements={elements}
-        stylesheet={STYLESHEET}
-        layout={{ name: 'cose', animate: false, padding: 40 } as cytoscape.LayoutOptions}
-        style={{ width: '100%', height: '100%' }}
-        cy={(cy) => {
-          cyRef.current = cy
-          cy.one('layoutstop', () => cy.fit(undefined, 40))
-        }}
-      />
+    <div className="h-full flex flex-col bg-slate-950">
+      <div className="relative flex-1 min-h-0">
+        <CytoscapeComponent
+          key={JSON.stringify(graph)}
+          elements={elements}
+          stylesheet={STYLESHEET}
+          layout={{ name: 'cose', animate: false, padding: 40 } as cytoscape.LayoutOptions}
+          style={{ width: '100%', height: '100%' }}
+          cy={(cy) => {
+            cyRef.current = cy
+            cy.one('layoutstop', () => cy.fit(undefined, 40))
+          }}
+        />
 
-      {/* Legend */}
-      <div className="absolute bottom-4 left-4 flex flex-col gap-1 text-xs text-slate-500">
-        <span>{graph.n_nodes} nodes &middot; {renderedEdgeCount} edges</span>
-        {taskSpecific?.type === 'depo' && (
-          <div className="flex gap-3 mt-1">
-            <span className="flex items-center gap-1">
-              <span className="inline-block w-3 h-3 rounded bg-emerald-900 border border-emerald-500" />
-              query
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="inline-block w-3 h-3 rounded bg-blue-900 border border-blue-400" />
-              answer
-            </span>
-          </div>
-        )}
+        {/* Legend */}
+        <div className="absolute bottom-4 left-4 flex flex-col gap-1 text-xs text-slate-500">
+          <span>{graph.n_nodes} nodes &middot; {renderedEdgeCount} edges</span>
+          {taskSpecific?.type === 'depo' && (
+            <div className="flex gap-3 mt-1">
+              <span className="flex items-center gap-1">
+                <span className="inline-block w-3 h-3 rounded bg-emerald-900 border border-emerald-500" />
+                query
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block w-3 h-3 rounded bg-blue-900 border border-blue-400" />
+                answer
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Controls */}
+        <div className="absolute top-4 right-4 flex gap-2">
+          <button
+            onClick={() => cyRef.current?.fit(undefined, 40)}
+            className="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded text-slate-400"
+          >
+            Fit
+          </button>
+        </div>
       </div>
 
-      {/* Controls */}
-      <div className="absolute top-4 right-4 flex gap-2">
-        <button
-          onClick={() => cyRef.current?.fit(undefined, 40)}
-          className="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 rounded text-slate-400"
-        >
-          Fit
-        </button>
+      <div className="h-80 border-t border-slate-800 bg-slate-900/60 overflow-auto">
+        <EvalPanel sample={sample} />
       </div>
     </div>
   )

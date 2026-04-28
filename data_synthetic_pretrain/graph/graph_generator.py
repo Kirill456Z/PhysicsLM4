@@ -4,6 +4,7 @@ from data_synthetic_pretrain.graph.graph import Graph
 from data_synthetic_pretrain.graph.models import NodeWord, SpecialToken, EncodingFormat
 from collections import defaultdict
 import numpy as np
+from data_synthetic_pretrain.graph.utils import break_up_sequence_into_words
 
 class GraphGenerator:
     def __init__(self, config: GraphGeneratorConfig):
@@ -18,9 +19,65 @@ class GraphGenerator:
     
     def generate(self, num_nodes: int) -> Graph:
         if self.config.is_dag:
-            return self.generate_dag(num_nodes)
+            graph = self.generate_dag(num_nodes)
         else:
-            return self.generate_random_graph(num_nodes)
+            graph = self.generate_random_graph(num_nodes)
+        if self.config.max_connectivity_components is not None or self.config.min_concomp_size is not None:
+            graph = self.constrain_generation(
+                graph,
+                self.config.max_connectivity_components,
+                self.config.min_concomp_size,
+            )
+        return graph
+
+    def _merge_components(
+        self, graph: Graph, comp1: tuple, comp2: tuple
+    ) -> tuple:
+        """Add random edges between two components and return their union."""
+        connectivity = np.random.uniform(0, 1, (len(comp1), len(comp2)))
+        is_edge = connectivity < self.config.edge_probability
+        if not np.any(is_edge):
+            is_edge[np.random.choice(len(comp1)), np.random.choice(len(comp2))] = True
+        for i in range(len(comp1)):
+            for j in range(len(comp2)):
+                if is_edge[i, j]:
+                    graph.edges.setdefault(comp1[i], []).append(comp2[j])
+                    graph.edges.setdefault(comp2[j], []).append(comp1[i])
+        return tuple(list(comp1) + list(comp2))
+
+    def constrain_generation(
+        self,
+        graph: Graph,
+        max_connectivity_components: int | None = None,
+        min_concomp_size: int | None = None,
+    ) -> Graph:
+        """Merge connectivity components until constraints are satisfied.
+
+        Repeatedly merges the two smallest components until the number of
+        components is <= *max_connectivity_components* and every component has
+        at least *min_concomp_size* nodes.  Either argument may be ``None`` to
+        skip that constraint.
+        """
+        visited: set = set()
+        components: set[tuple] = set()
+        for node in graph.nodes:
+            if node not in visited:
+                component = tuple(graph.bfs(node).keys())
+                components.add(component)
+                visited.update(component)
+
+        comps_list = sorted(components, key=lambda x: len(x))
+        while len(components) >= 2:
+            too_many = max_connectivity_components is not None and len(components) > max_connectivity_components
+            too_small = min_concomp_size is not None and len(comps_list[0]) < min_concomp_size
+            if not too_many and not too_small:
+                break
+            comp1, comp2 = comps_list[0], comps_list[1]
+            components.discard(comp1)
+            components.discard(comp2)
+            components.add(self._merge_components(graph, comp1, comp2))
+            comps_list = sorted(components, key=lambda x: len(x))
+        return graph
     
     def generate_node_words(self, n_words: int) -> list[NodeWord]:
         result = []
@@ -53,24 +110,10 @@ class GraphGenerator:
                 edges[nodes[to_node]].append(nodes[from_node])
         return Graph(nodes=nodes, edges=dict(edges), adj_list_encoding_config=self.config.encoding_config)
     
-    def _break_up_into_words(self, tokens: list[int]) -> list[NodeWord | SpecialToken]:
-        result = []
-        cur_word = []
-        for token in tokens:
-            if token > 2 * self.config.base_vocab_size:
-                result.append(SpecialToken(token=token))
-                cur_word = []
-            else:
-                cur_word.append(token)
-                if token > self.config.base_vocab_size:
-                    result.append(NodeWord(tokens=tuple(cur_word)))
-                    cur_word = []
-        if len(cur_word) != 0:
-            raise ValueError("Malformed token sequence received for parsing")
-        return result
-
     def decode_from_edges_list(self, edges_list: list[int]) -> Graph:
-        word_sequence = self._break_up_into_words(edges_list)
+        word_sequence, remainder = break_up_sequence_into_words(edges_list, self.config.base_vocab_size)
+        if len(remainder) != 0:
+            raise ValueError("Malformed token sequence received for parsing")
         for word in word_sequence:
             if isinstance(word, SpecialToken):
                 raise ValueError("Special tokens are not allowed in edges list")
@@ -85,7 +128,9 @@ class GraphGenerator:
         return Graph(nodes=list(nodes), edges=dict(edges), adj_list_encoding_config=self.config.encoding_config)
     
     def decode_from_adjacency_list(self, adjacency_list: list[int]) -> Graph:
-        words_sequence = self._break_up_into_words(adjacency_list)
+        words_sequence, remainder = break_up_sequence_into_words(adjacency_list, self.config.base_vocab_size)
+        if len(remainder) != 0:
+            raise ValueError("Malformed token sequence received for parsing")
         pairs = []
         cur_pair = []
         for word in words_sequence:

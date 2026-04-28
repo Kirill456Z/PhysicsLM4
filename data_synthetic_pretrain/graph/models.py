@@ -48,4 +48,6 @@ class GraphGeneratorConfig(BaseModel):
     encoding_config: EncodingConfig
     is_dag: bool
     edge_probability: float
+    max_connectivity_components: int | None = None
+    min_concomp_size: int | None = None
 

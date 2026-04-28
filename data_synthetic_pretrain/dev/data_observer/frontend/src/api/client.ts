@@ -1,4 +1,4 @@
-import type { SampleResponse, BatchResponse, ValidateResponse } from '../types'
+import type { SampleResponse, BatchResponse, ValidateResponse, TaskTabsResponse } from '../types'
 
 const API_BASE = '/api'
 
@@ -17,6 +17,14 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   getTasks: () => fetchJson<{ tasks: string[] }>('/tasks'),
+
+  getTaskTabs: () => fetchJson<TaskTabsResponse>('/task-tabs'),
+
+  saveTaskTab: (tabName: string, configYaml: string) =>
+    fetchJson<{ tab_name: string; task_name: string; updated_full_config_yaml: string }>(`/task-tabs/${tabName}`, {
+      method: 'PUT',
+      body: JSON.stringify({ config_yaml: configYaml }),
+    }),
 
   getDefaultConfig: (taskName: string) =>
     fetchJson<{ task_name: string; config_yaml: string }>(`/default-config/${taskName}`),
@@ -39,7 +47,7 @@ export const api = {
       body: JSON.stringify({ config_yaml: configYaml, task_name: taskName, batch_size: batchSize }),
     }),
 
-  evaluate: (payload: {
+  evaluate: (payload: ({
     config_yaml: string
     task_name: string
     generation: number[]
@@ -47,12 +55,22 @@ export const api = {
     context: number[]
     loss_mask: number[]
     answer_start_index: number
+    graph_nodes: number[][]
+    graph_edges: { from: number; to: number }[]
+  } & ({
     query_nodes: number[][]
     answer_nodes: number[][]
     num_hops: number[]
-    graph_nodes: number[][]
-    graph_edges: { from: number; to: number }[]
-  }) =>
+  } | {
+    query_node: number[]
+    answer_sequence: number[][]
+  } | {
+    query_node: number[]
+    answer_nodes: number[][]
+  } | {
+    answer_nodes: number[][]
+    components: number[][][]
+  }))) =>
     fetchJson<{ metrics: Record<string, number> }>('/evaluate', {
       method: 'POST',
       body: JSON.stringify(payload),

@@ -12,6 +12,8 @@ class DepoGenerationArgs(BaseSyntheticTaskConfig):
     max_hops: int
     num_queries: int
     query_token_base: int
+    num_eval_samples_per_hop: int = 100
+    eos_token: int | None = None
 
 
 class DepoSynteticTask(SynteticTask):
@@ -57,6 +59,9 @@ class DepoRefactored(BaseSynteticTaskGenerator):
             query_node = graph.edges[query_node][0]
             num_steps -= 1
         return query_node
+    
+    def max_generation_length(self):
+        return self.config.max_token_length + 1
 
     def _sample_num_nodes(self):
         node_choices = list(range(3, self.config.max_nodes + 1))
@@ -100,6 +105,9 @@ class DepoRefactored(BaseSynteticTaskGenerator):
 
             loss_mask.extend([0] * (len(query_nodes[i].tokens) + 1))
             loss_mask.extend([1] * len(answer.tokens))
+        if self.config.eos_token is not None:
+            context.append(self.config.eos_token)
+            loss_mask.append(1)
         return DepoSynteticTask(
             task_index=self.config.task_index,
             context=context,
@@ -116,7 +124,7 @@ class DepoRefactored(BaseSynteticTaskGenerator):
         eval_set = []
         num_hops = 1
         while num_hops <= self.config.max_hops:
-            for _ in range(100):
+            for _ in range(self.config.num_eval_samples_per_hop):
                 eval_set.append(
                     self.generate(num_hops=num_hops, num_nodes=self.config.max_nodes, num_query_nodes=1)
                 )

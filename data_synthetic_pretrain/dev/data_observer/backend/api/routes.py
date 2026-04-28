@@ -7,9 +7,18 @@ from models import (
     ValidateConfigResponse,
     TasksResponse,
     DefaultConfigResponse,
+    TaskTabsResponse,
+    SaveTaskTabRequest,
+    SaveTaskTabResponse,
     EvaluateRequest,
 )
-from config import parse_config, DEFAULT_DEPO_CONFIG
+from config import (
+    parse_config,
+    DEFAULT_DEPO_CONFIG,
+    load_tasks_config_yaml,
+    build_single_task_config_yaml,
+    save_task_tab_config,
+)
 from generation import generate_sample, generate_batch, evaluate_generation
 
 from data_synthetic_pretrain.tasks import SYNTHETIC_TASKS
@@ -26,9 +35,45 @@ def list_tasks():
     return {"tasks": list(SYNTHETIC_TASKS.keys())}
 
 
+@router.get("/task-tabs", response_model=TaskTabsResponse)
+def get_task_tabs():
+    full_yaml = load_tasks_config_yaml()
+    # Build one tab per entry in synthetic_tasks list
+    import yaml as _yaml
+
+    data = _yaml.safe_load(full_yaml)
+    tasks_raw = (
+        (data or {}).get("synthetic_tasks_generation_args", {}).get("synthetic_tasks", []) or []
+    )
+    tabs = []
+    for i in range(len(tasks_raw)):
+        tab_name, task_name, config_yaml = build_single_task_config_yaml(full_yaml, i)
+        tabs.append({"tab_name": tab_name, "task_name": task_name, "config_yaml": config_yaml})
+    return {"full_config_yaml": full_yaml, "tabs": tabs}
+
+
+@router.put("/task-tabs/{tab_name}", response_model=SaveTaskTabResponse)
+def save_task_tab(tab_name: str, req: SaveTaskTabRequest):
+    try:
+        task_name, updated_full = save_task_tab_config(tab_name=tab_name, single_task_config_yaml=req.config_yaml)
+        return {
+            "tab_name": tab_name,
+            "task_name": task_name,
+            "updated_full_config_yaml": updated_full,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save config: {e}")
+
+
 @router.get("/default-config/{task_name}", response_model=DefaultConfigResponse)
 def get_default_config(task_name: str):
-    config_yaml = _DEFAULT_CONFIGS.get(task_name, DEFAULT_DEPO_CONFIG)
+    # Backwards-compatible: default to repo tasks_config.yaml if available.
+    try:
+        config_yaml = load_tasks_config_yaml()
+    except Exception:
+        config_yaml = _DEFAULT_CONFIGS.get(task_name, DEFAULT_DEPO_CONFIG)
     return {"task_name": task_name, "config_yaml": config_yaml}
 
 
@@ -51,7 +96,10 @@ def generate(req: GenerateSampleRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Generation failed: {e}")
+   
 
 
 @router.post("/generate-batch")
@@ -74,6 +122,16 @@ def evaluate(req: EvaluateRequest):
     config, errors = parse_config(req.config_yaml)
     if errors:
         raise HTTPException(status_code=400, detail={"errors": errors})
+    if req.task_name == "shortest_path" and (req.query_node is None or req.answer_nodes is None):
+        raise HTTPException(
+            status_code=400,
+            detail="Missing shortest_path-specific fields: query_node, answer_nodes",
+        )
+    if req.task_name == "concomp_factor" and (req.answer_nodes is None or req.components is None):
+        raise HTTPException(
+            status_code=400,
+            detail="Missing concomp_factor-specific fields: answer_nodes, components",
+        )
     try:
         metrics = evaluate_generation(
             config=config,
@@ -85,7 +143,10 @@ def evaluate(req: EvaluateRequest):
             answer_start_index=req.answer_start_index,
             query_nodes=req.query_nodes,
             answer_nodes=req.answer_nodes,
+            components=req.components,
             num_hops=req.num_hops,
+            query_node=req.query_node,
+            answer_sequence=req.answer_sequence,
             graph_nodes=req.graph_nodes,
             graph_edges=req.graph_edges,
         )

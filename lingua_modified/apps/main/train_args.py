@@ -5,7 +5,10 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
-from data_synthetic_pretrain.dataloader.data_generation_args import SyntheticTasksGenerationArgs, SyntheticTasksFormattingArgs
+from data_synthetic_pretrain.dataloader.data_generation_args import (
+    SyntheticTasksFormattingArgs,
+    load_generation_args_from_yaml,
+)
 
 import os
 
@@ -67,7 +70,6 @@ class TrainArgs:
     profiling: ProfilerArgs = field(default_factory=ProfilerArgs)
     logging: LoggingArgs = field(default_factory=LoggingArgs)
 
-    synthetic_tasks_generation_args: SyntheticTasksGenerationArgs = field(default_factory=SyntheticTasksGenerationArgs)
     synthetic_tasks_formatting_args: SyntheticTasksFormattingArgs = field(default_factory=SyntheticTasksFormattingArgs)
 
     # If set to None, eval is run locally otherwise it launches a new job with the given number of gpus
@@ -159,12 +161,13 @@ def parse_data_mode(data_mode: str) -> list[tuple[str, float]]:
 
 
 def _depo_max_hops_and_nodes(args: TrainArgs) -> tuple[int, int]:
-    for task in args.synthetic_tasks_generation_args.synthetic_tasks:
+    generation_args = load_generation_args_from_yaml()
+    for task in generation_args.synthetic_tasks:
         if task.task_name == "depo":
             gen = task.generation_args
             return int(gen["max_hops"]), int(gen["max_nodes"])
     raise ValueError(
-        "data_mode is 'depo' but no depo task found in synthetic_tasks_generation_args.synthetic_tasks"
+        "data_mode is 'depo' but no depo task found in tasks_config.yaml synthetic_tasks"
     )
 
 

@@ -9,9 +9,11 @@ from typing import Iterator, List
 import numpy as np
 from copy import deepcopy
 from typing import TypedDict
+from pathlib import Path
+
 from data_synthetic_pretrain.dataloader.data_generation_args import (
     SyntheticTasksFormattingArgs,
-    SyntheticTasksGenerationArgs,
+    load_generation_args_from_yaml,
 )
 from data_synthetic_pretrain.tasks import SYNTHETIC_TASKS
 from data_synthetic_pretrain.tasks.base_task import BaseSynteticTaskGenerator
@@ -162,27 +164,30 @@ class SyntheticDataLoader:
             yield (batch, deepcopy(self.state))
 
 def get_generators(
-    synthetic_tasks_generation_args: SyntheticTasksGenerationArgs,
     synthetic_tasks_formatting_args: SyntheticTasksFormattingArgs,
+    tasks_config_path: str | Path | None = None,
+    eval_dump_dir: str | None = None,
 ):
+    generation_args = load_generation_args_from_yaml(tasks_config_path)
+    effective_eval_dump_dir = eval_dump_dir if eval_dump_dir is not None else generation_args.eval_dump_dir
     generators = []
     weights = []
-    for generation_args in synthetic_tasks_generation_args.synthetic_tasks:
-        generation_args.generation_args["eval_dump_dir"] = synthetic_tasks_generation_args.eval_dump_dir
-        task_generator = SYNTHETIC_TASKS[generation_args.task_name].build_from_dict(
-            generation_args.generation_args
+    for task_gen_args in generation_args.synthetic_tasks:
+        task_gen_args.generation_args["eval_dump_dir"] = effective_eval_dump_dir
+        task_generator = SYNTHETIC_TASKS[task_gen_args.task_name].build_from_dict(
+            task_gen_args.generation_args
         )
         generators.append(task_generator)
-        weights.append(generation_args.weight or 1.0)
+        weights.append(task_gen_args.weight or 1.0)
     return generators, weights
 
 def build_dataloader(
-    synthetic_tasks_generation_args: SyntheticTasksGenerationArgs,
     synthetic_tasks_formatting_args: SyntheticTasksFormattingArgs,
+    tasks_config_path: str | Path | None = None,
 ):
     generators, weights = get_generators(
-        synthetic_tasks_generation_args,
         synthetic_tasks_formatting_args,
+        tasks_config_path=tasks_config_path,
     )
     dataloader = SyntheticDataLoader(
         generators=generators,

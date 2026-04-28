@@ -2,11 +2,10 @@ import ConfigEditor from '../components/ConfigEditor'
 import GraphViewer from '../components/GraphViewer'
 import DataInspector from '../components/DataInspector'
 import TaskMetadata from '../components/TaskMetadata'
-import EvalPanel from '../components/EvalPanel'
 import { useStore } from '../store'
 import { useGenerateSample, useGenerateBatch, useValidateConfig } from '../hooks/useDataGeneration'
 
-const RESULT_TABS = ['graph', 'tokens', 'metadata', 'eval'] as const
+const RESULT_TABS = ['graph', 'tokens', 'metadata'] as const
 type ResultTab = (typeof RESULT_TABS)[number]
 
 export default function TaskViewer() {
@@ -169,11 +168,14 @@ export default function TaskViewer() {
           {currentSample && !isLoading && (
             <>
               {activeResultTab === 'graph' && (
-                <GraphViewer graph={currentSample.graph} taskSpecific={currentSample.task_specific} />
+                <GraphViewer
+                  sample={currentSample}
+                  graph={currentSample.graph}
+                  taskSpecific={currentSample.task_specific}
+                />
               )}
               {activeResultTab === 'tokens' && <DataInspector sample={currentSample} />}
               {activeResultTab === 'metadata' && <TaskMetadata sample={currentSample} />}
-              {activeResultTab === 'eval' && <EvalPanel sample={currentSample} />}
             </>
           )}
         </div>

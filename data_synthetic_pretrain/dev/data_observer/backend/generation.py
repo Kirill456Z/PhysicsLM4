@@ -5,6 +5,9 @@ from typing import Any
 
 from data_synthetic_pretrain.tasks import SYNTHETIC_TASKS
 from data_synthetic_pretrain.tasks.depo import DepoSynteticTask
+from data_synthetic_pretrain.tasks.bfs import BFSSynteticTask
+from data_synthetic_pretrain.tasks.shortest_path import ShortestPathSynteticTask
+from data_synthetic_pretrain.tasks.concomp_factor import ConCompFactorSynteticTask
 from data_synthetic_pretrain.dataloader.dataloader import SyntheticDataLoader
 from data_synthetic_pretrain.dataloader.data_generation_args import SyntheticTasksFormattingArgs
 from data_synthetic_pretrain.graph.graph import Graph
@@ -69,6 +72,27 @@ def _sample_to_dict(sample, formatted: np.ndarray, task_name: str, gen_args: dic
             "answer_nodes": [list(n.tokens) for n in sample.answer_nodes],
             "num_hops": [int(h) for h in sample.num_hops],
             "answer_start_index": asi,
+        }
+    
+    if isinstance(sample, BFSSynteticTask):
+        result["task_specific"] = {
+            "type": "bfs",
+            "query_node": list(sample.query_node.tokens),
+            "answer_sequence": [list(n.tokens) for n in sample.answer_sequence],
+        }
+    
+    if isinstance(sample, ShortestPathSynteticTask):
+        result["task_specific"] = {
+            "type": "shortest_path",
+            "query_node": list(sample.query_node.tokens),
+            "answer_nodes": [list(n.tokens) for n in sample.answer_nodes],
+        }
+    
+    if isinstance(sample, ConCompFactorSynteticTask):
+        result["task_specific"] = {
+            "type": "concomp_factor",
+            "answer_nodes": [list(n.tokens) for n in sample.answer_nodes],
+            "components": [[list(n.tokens) for n in comp] for comp in sample.components],
         }
 
     return result
@@ -144,9 +168,12 @@ def evaluate_generation(
     context: list[int],
     loss_mask: list[int],
     answer_start_index: int,
-    query_nodes: list[list[int]],
-    answer_nodes: list[list[int]],
-    num_hops: list[int],
+    query_nodes: list[list[int]] | None,
+    answer_nodes: list[list[int]] | None,
+    components: list[list[list[int]]] | None,
+    num_hops: list[int] | None,
+    query_node: list[int] | None,
+    answer_sequence: list[list[int]] | None,
     graph_nodes: list[list[int]],
     graph_edges: list[dict[str, int]],
 ) -> dict[str, Any]:
@@ -159,16 +186,57 @@ def evaluate_generation(
     generator = SYNTHETIC_TASKS[task_name].build_from_dict(task_cfg.generation_args)
     graph = _rebuild_graph(graph_nodes, graph_edges, task_cfg.generation_args)
 
-    task = DepoSynteticTask(
-        task_index=task_index,
-        context=context,
-        loss_mask=loss_mask,
-        graph=graph,
-        query_nodes=[NodeWord(tokens=tuple(t)) for t in query_nodes],
-        answer_nodes=[NodeWord(tokens=tuple(t)) for t in answer_nodes],
-        num_hops=num_hops,
-        answer_start_index=answer_start_index,
-    )
+    if task_name == "depo":
+        if query_nodes is None or answer_nodes is None or num_hops is None:
+            raise ValueError("Missing depo-specific fields: query_nodes, answer_nodes, num_hops")
+        task = DepoSynteticTask(
+            task_index=task_index,
+            context=context,
+            loss_mask=loss_mask,
+            graph=graph,
+            query_nodes=[NodeWord(tokens=tuple(t)) for t in query_nodes],
+            answer_nodes=[NodeWord(tokens=tuple(t)) for t in answer_nodes],
+            num_hops=num_hops,
+            answer_start_index=answer_start_index,
+        )
+    elif task_name == "bfs":
+        if query_node is None or answer_sequence is None:
+            raise ValueError("Missing bfs-specific fields: query_node, answer_sequence")
+        task = BFSSynteticTask(
+            task_index=task_index,
+            context=context,
+            loss_mask=loss_mask,
+            graph=graph,
+            query_node=NodeWord(tokens=tuple(query_node)),
+            answer_sequence=[NodeWord(tokens=tuple(t)) for t in answer_sequence],
+            answer_start_index=answer_start_index,
+        )
+    elif task_name == "shortest_path":
+        if query_node is None or answer_nodes is None:
+            raise ValueError("Missing shortest_path-specific fields: query_node, answer_nodes")
+        task = ShortestPathSynteticTask(
+            task_index=task_index,
+            context=context,
+            loss_mask=loss_mask,
+            graph=graph,
+            query_node=NodeWord(tokens=tuple(query_node)),
+            answer_nodes=[NodeWord(tokens=tuple(t)) for t in answer_nodes],
+            answer_start_index=answer_start_index,
+        )
+    elif task_name == "concomp_factor":
+        if answer_nodes is None or components is None:
+            raise ValueError("Missing concomp_factor-specific fields: answer_nodes, components")
+        task = ConCompFactorSynteticTask(
+            task_index=task_index,
+            context=context,
+            loss_mask=loss_mask,
+            graph=graph,
+            answer_nodes=[NodeWord(tokens=tuple(t)) for t in answer_nodes],
+            components=[[NodeWord(tokens=tuple(t)) for t in comp] for comp in components],
+            answer_start_index=answer_start_index,
+        )
+    else:
+        raise ValueError(f"Evaluation not implemented for task '{task_name}'")
 
     raw_metrics = generator.evaluate(task, generation)
     return _to_python(raw_metrics)

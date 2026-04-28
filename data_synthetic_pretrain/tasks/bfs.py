@@ -4,17 +4,30 @@ from typing import override
 import numpy as np
 from data_synthetic_pretrain.graph.graph import Graph
 from data_synthetic_pretrain.graph.models import NodeWord
-from collections import deque
-
+from data_synthetic_pretrain.graph.utils import break_up_sequence_into_words
+from pydantic import field_validator
 
 class BFSGenerationConfig(BaseSyntheticTaskConfig):
     query_token: int
     max_nodes: int
-
+    eos_token: int
+    max_nodes_in_output: int
+    num_eval_samples_per_complexity: int = 50
 
 class BFSSynteticTask(SynteticTask):
     query_node: NodeWord
     answer_sequence: list[NodeWord]
+
+    @field_validator("query_node", "answer_sequence", mode="before")
+    @classmethod
+    def _lists_of_nodeword(cls, v):
+        if v is None:
+            return v
+        if isinstance(v, np.ndarray):
+            v = v.tolist()
+        if not isinstance(v, list):
+            return v
+        return [NodeWord.model_validate(x) if isinstance(x, dict) else x for x in v]
 
 
 class BFSTaskGenerator(BaseSynteticTaskGenerator):
@@ -27,19 +40,8 @@ class BFSTaskGenerator(BaseSynteticTaskGenerator):
     def build_from_dict(cls, config: dict) -> BaseSynteticTaskGenerator:
         return cls(BFSGenerationConfig.model_validate(config))
 
-    def resolve_for_query(
-        self, graph: Graph, query_node: NodeWord
-    ) -> NodeWord:
-        bfs_queue = deque([query_node])
-        result = []
-        while len(bfs_queue) > 0:
-            current_node = bfs_queue.popleft()
-            result.append(current_node)
-            neighbors = sorted(graph.edges[current_node], key=lambda x: x.tokens)
-            for neighbor in neighbors:
-                if neighbor not in result:
-                    bfs_queue.append(neighbor)
-        return result
+    def resolve_for_query(self, graph: Graph, query_node: NodeWord) -> list[NodeWord]:
+        return list(graph.bfs(query_node).keys())
 
     def _sample_num_nodes(self):
         node_choices = list(range(3, self.config.max_nodes + 1))
@@ -48,6 +50,9 @@ class BFSTaskGenerator(BaseSynteticTaskGenerator):
         total = sum(weights)
         weights = [w / total for w in weights]
         return np.random.choice(node_choices, size=1, p=weights)[0]
+
+    def max_generation_length(self):
+        return self.config.max_nodes_in_output * (self.config.max_token_length) + 1
 
     @override
     def generate(
@@ -65,10 +70,13 @@ class BFSTaskGenerator(BaseSynteticTaskGenerator):
         context.extend(query_node.tokens)
         loss_mask.extend([0] * len(query_node.tokens))
         answer_nodes = self.resolve_for_query(graph, query_node)
+        answer_nodes = answer_nodes[:self.config.max_nodes_in_output]
         answer_start_index = len(context) + 1
         for answer_node in answer_nodes:
             context.extend(answer_node.tokens)
             loss_mask.extend([1] * len(answer_node.tokens))
+        context.append(self.config.eos_token)
+        loss_mask.append(1)
         return BFSSynteticTask(
             task_index=self.config.task_index,
             context=context,
@@ -82,7 +90,7 @@ class BFSTaskGenerator(BaseSynteticTaskGenerator):
     @override
     def _generate_eval_set(self) -> list[BFSSynteticTask]:
         eval_set = []
-        for _ in range(100):
+        for _ in range(self.config.num_eval_samples):
             eval_set.append(
                 self.generate(num_nodes=self.config.max_nodes)
             )
@@ -94,18 +102,18 @@ class BFSTaskGenerator(BaseSynteticTaskGenerator):
     def evaluate(
         self, task: BFSSynteticTask, generation: list[int]
     ) -> dict[str, float]:
-        generation = np.array(generation)
-        answer_tokens = np.array(task.answer_nodes[0].tokens)
-        is_oov_token = generation > 2 * self.config.graph_generator_config.base_vocab_size
-        if np.any(is_oov_token):
-            truncated_generation = generation[:is_oov_token.argmax() + 1]
-        else:
-            truncated_generation = generation
-        truncated_generation = truncated_generation[:len(answer_tokens)]
-        truncated_generation = np.pad(truncated_generation, (0, len(answer_tokens) - len(truncated_generation)), mode='constant', constant_values=-1)
-        correct = (truncated_generation == answer_tokens)
-        prefix_correct = 0.0 if not correct[0] else (np.argmin(correct) or len(correct)) / len(correct)
+        generation = list(generation)
+        sequence, remainder = break_up_sequence_into_words(generation, self.config.graph_generator_config.base_vocab_size)
+        generated_nodes = [node for node in sequence if isinstance(node, NodeWord)]
+        intersection = set(generated_nodes) & set(task.answer_sequence)
+        prefix_acc = 0
+        for generated_node, expected_node in zip(generated_nodes, task.answer_sequence):
+            if generated_node == expected_node:
+                prefix_acc += 1
+            else:
+                break
         return {
-            f"hop_{task.num_hops[0]}/accuracy": np.all(correct),
-            f"hop_{task.num_hops[0]}/prefix_accuracy": prefix_correct,
+            "set_recall": len(intersection) / len(task.answer_sequence),
+            "set_precision": (len(intersection) / len(generated_nodes)) if len(generated_nodes) > 0 else 0.0,
+            "prefix_accuracy": prefix_acc / len(task.answer_sequence),
         }

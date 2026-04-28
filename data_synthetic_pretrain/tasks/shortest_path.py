@@ -1,308 +1,153 @@
-"""ShortestPath synthetic dataset — BFS shortest-path reasoning on directed graphs.
-
-Format (unified with Depo, Brevo, ConComp):
-    <TASK_SP> src1 dst1 src2 dst2 ... <SP_QUERY> start_word end_word <SP_ANS> v1 v2 ... vk <EOS>
-
-- Graph is a directed random graph; edges are stored as flat (src, dst) word pairs.
-- Query: the start node word followed by the end node word.
-- Answer: the sequence of node words forming the BFS shortest path from start to end,
-  including both endpoints.  If no path exists the answer is empty (only EOS follows SP_ANS).
-- Loss mask: 1 for answer body tokens + EOS, 0 elsewhere.
-
-Token layout is shared with the other tasks — see data_synthetic_pretrain/shared_vocab.py.
-"""
-
-from __future__ import annotations
-
-import os
-import sys
-from collections import deque
-from dataclasses import dataclass, fields
-from typing import Any, TypedDict
-
+from data_synthetic_pretrain.tasks.models import BaseSyntheticTaskConfig, SynteticTask
+from data_synthetic_pretrain.tasks.base_task import BaseSynteticTaskGenerator
+from typing import override
 import numpy as np
+from pydantic import field_validator
+from data_synthetic_pretrain.graph.graph import Graph
+from data_synthetic_pretrain.graph.models import NodeWord
+from data_synthetic_pretrain.graph.utils import break_up_sequence_into_words
 
-_PRETRAIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _PRETRAIN_ROOT not in sys.path:
-    sys.path.insert(0, _PRETRAIN_ROOT)
-
-from shared_vocab import vocab_layout, generate_words_numpy, split_into_words, unified_vocab_size
-from data_synthetic_pretrain.graph import AdjacencyTokens, Graph
-from data_synthetic_pretrain.tasks.config import sample_encoding_format
-from data_synthetic_pretrain.base_data_generator import (
-    BaseDataGenerator,
-    CommonSyntheticGenerationArgs,
-)
-
-
-class ShortestPathGeneratorState(TypedDict):
+class ShortestPathGenerationArgs(BaseSyntheticTaskConfig):
     max_nodes: int
-    min_nodes: int
-    edge_p: float
-    base_vocab_size: int
-    min_token_length: int
-    max_token_length: int
-    encoding_format: str
-    seed: int
-    sample_count: int
+    max_distance: int
+    num_eval_samples: int = 30
+    query_separator_token: int | None = None
+    eos_token: int | None = None
 
 
-def sp_vocab_size(base_vocab_size: int = 4) -> int:
-    """Return the minimum vocab size for ShortestPath with the given base vocab."""
-    return unified_vocab_size(base_vocab_size)
+class ShortestPathSynteticTask(SynteticTask):
+    query_node: NodeWord
+    answer_nodes: list[NodeWord]
 
+    @field_validator("query_node", "answer_nodes", mode="before")
+    @classmethod
+    def _lists_of_nodeword(cls, v):
+        if v is None:
+            return v
+        if isinstance(v, np.ndarray):
+            v = v.tolist()
+        if not isinstance(v, list):
+            return v
+        return [NodeWord.model_validate(x) if isinstance(x, dict) else x for x in v]
 
-# ---------------------------------------------------------------------------
-# BFS shortest-path helper (operates on vertex indices)
-# ---------------------------------------------------------------------------
+class ShortestPathTaskGenerator(BaseSynteticTaskGenerator):
+    name = "shortest_path"
 
-def _bfs_path(adj: list[list[int]], start: int, end: int) -> list[int] | None:
-    """BFS from *start* to *end*; return list of vertex indices or None if unreachable."""
-    if start == end:
-        return [start]
-    parent: dict[int, int | None] = {start: None}
-    queue: deque[int] = deque([start])
-    while queue:
-        u = queue.popleft()
-        for v in adj[u]:
-            if v not in parent:
-                parent[v] = u
-                if v == end:
-                    path: list[int] = []
-                    node: int | None = end
-                    while node is not None:
-                        path.append(node)
-                        node = parent[node]
-                    path.reverse()
-                    return path
-                queue.append(v)
-    return None
+    def __init__(self, config: ShortestPathGenerationArgs):
+        super().__init__(config)
 
+    @classmethod
+    def build_from_dict(cls, config: dict) -> BaseSynteticTaskGenerator:
+        return cls(ShortestPathGenerationArgs.model_validate(config))
 
-# ---------------------------------------------------------------------------
-# Public generation function
-# ---------------------------------------------------------------------------
+    def bfs(self, graph: Graph, query_node: NodeWord, max_steps: int) -> list[NodeWord]:
+        parents_map = graph.bfs(query_node, max_depth=max_steps)
+        # Pick the first node in BFS order that sits at depth == max_steps,
+        # or fall back to the last reachable node if the graph is smaller.
+        target = next(
+            (n for n, (_, d) in parents_map.items() if d == max_steps),
+            list(parents_map.keys())[-1],
+        )
+        path = []
+        node: NodeWord | None = target
+        while node is not None:
+            path.append(node)
+            node, _ = parents_map[node]
+        return path[::-1]
+    
+    def max_generation_length(self):
+        return self.config.max_token_length * self.config.max_distance + 1
 
-def generate_sp_sample(
-    rng,
-    max_nodes: int,
-    min_nodes: int,
-    edge_p: float,
-    base_vocab_size: int = 4,
-    min_token_length: int = 4,
-    max_token_length: int = 6,
-    encoding_format: str = "edges_list",
-) -> dict:
-    """Generate one ShortestPath sample using the unified vocabulary.
+    def _sample_num_nodes(self):
+        node_choices = list(range(3, self.config.max_nodes + 1))
+        power, bias = 1, pow(self.config.max_nodes, 0.5)
+        weights = [1.0 / (pow(i, power) + bias + 1e-12) for i in node_choices]
+        total = sum(weights)
+        weights = [w / total for w in weights]
+        return np.random.choice(node_choices, size=1, p=weights)[0]
 
-    Args:
-        rng: ``numpy.random.Generator`` instance.
-        max_nodes: Maximum number of nodes N; actual n sampled from [min_nodes, N].
-        min_nodes: Minimum number of nodes.
-        edge_p: Bernoulli directed-edge probability.
-        base_vocab_size: Shared base vocabulary size B (must match other tasks).
-        min_token_length: Minimum tokens per node-name word.
-        max_token_length: Maximum tokens per node-name word.
-
-    Returns:
-        dict with ``"text"`` (List[int]) and ``"loss_mask"`` (List[int]).
-    """
-    layout   = vocab_layout(base_vocab_size)
-    TASK_SP  = layout["TASK_SP"]
-    SP_QUERY = layout["SP_QUERY"]
-    SP_ANS   = layout["SP_ANS"]
-    EOS      = layout["EOS"]
-    adjacency_tokens = AdjacencyTokens(
-        node_to_neighbors=layout["ADJ_NODE_TO_NEIGHBORS"],
-        pair_sep=layout["ADJ_PAIR_SEP"],
-        no_neighbor=layout["ADJ_NO_NEIGHBOR"],
-    )
-
-    # Sample graph size
-    n = int(rng.integers(min_nodes, max_nodes + 1))
-
-    # Generate n unique multi-token node words
-    nodes = generate_words_numpy(rng, n, base_vocab_size, min_token_length, max_token_length)
-
-    # Directed Bernoulli edges (no self-loops)
-    edge_matrix = rng.random((n, n)) < edge_p
-    np.fill_diagonal(edge_matrix, False)
-
-    adj: list[list[int]] = [[] for _ in range(n)]
-    edge_pairs: list[tuple[int, int]] = []
-    for i in range(n):
-        for j in range(n):
-            if edge_matrix[i, j]:
-                adj[i].append(j)
-                edge_pairs.append((i, j))
-
-    # Shuffle edge order
-    if len(edge_pairs) > 1:
-        idx = rng.permutation(len(edge_pairs))
-        edge_pairs = [edge_pairs[i] for i in idx]
-
-    graph = Graph.from_edges(nodes, edge_pairs, directed=True)
-    chosen_encoding = sample_encoding_format(rng, encoding_format)
-
-    # Context: task token + graph encoding
-    tokens: list[int] = [TASK_SP]
-    if chosen_encoding == "edges_list":
-        tokens += graph.edges_list()
-    elif chosen_encoding == "adjacency_list":
-        tokens += graph.adjacency_list(adjacency_tokens)
-    else:
-        raise ValueError(f"Unsupported encoding format '{chosen_encoding}'")
-    mask: list[int] = [0] * len(tokens)
-
-    # Pick start and end nodes that both appear in the edge list
-    nodes_in_edges: set[int] = set()
-    for i, j in edge_pairs:
-        nodes_in_edges.add(i)
-        nodes_in_edges.add(j)
-    candidates = sorted(nodes_in_edges) if len(nodes_in_edges) >= 2 else list(range(n))
-
-    if len(candidates) < 2:
-        # Degenerate graph — empty answer
-        start_idx, end_idx = 0, 0
-    else:
-        perm = rng.permutation(len(candidates))
-        start_idx = candidates[int(perm[0])]
-        end_idx   = candidates[int(perm[1])]
-
-    # Query: SP_QUERY + start_word + end_word
-    tokens += [SP_QUERY] + nodes[start_idx] + nodes[end_idx]
-    mask   += [0] * (1 + len(nodes[start_idx]) + len(nodes[end_idx]))
-
-    # Answer: SP_ANS + path words (mask = 1) + EOS (mask = 1)
-    tokens.append(SP_ANS)
-    mask.append(0)
-
-    path = _bfs_path(adj, start_idx, end_idx)
-    if path is not None:
-        for v in path:
-            tokens += nodes[v]
-            mask   += [1] * len(nodes[v])
-
-    tokens.append(EOS)
-    mask.append(1)
-
-    assert len(tokens) == len(mask)
-    return {"text": tokens, "loss_mask": mask, "encoding_format": chosen_encoding}
-
-
-# ---------------------------------------------------------------------------
-# Parsing helper (for evaluation)
-# ---------------------------------------------------------------------------
-
-def parse_sp_tokens(tokens: list[int], base_vocab_size: int = 4):
-    """Parse a ShortestPath token sequence.
-
-    Returns:
-        (valid, start_word, end_word, path_words)
-    """
-    layout   = vocab_layout(base_vocab_size)
-    TASK_SP  = layout["TASK_SP"]
-    SP_QUERY = layout["SP_QUERY"]
-    SP_ANS   = layout["SP_ANS"]
-    EOS      = layout["EOS"]
-
-    if not tokens or tokens[0] != TASK_SP or tokens[-1] != EOS:
-        return False, None, None, None
-
-    try:
-        idx_q   = tokens.index(SP_QUERY)
-        idx_ans = tokens.index(SP_ANS)
-    except ValueError:
-        return False, None, None, None
-
-    query_words = split_into_words(tokens[idx_q + 1:idx_ans], base_vocab_size)
-    path_words  = split_into_words(tokens[idx_ans + 1:-1],    base_vocab_size)
-
-    if len(query_words) != 2:
-        return False, None, None, None
-
-    return True, tuple(query_words[0]), tuple(query_words[1]), [tuple(w) for w in path_words]
-
-
-@dataclass
-class ShortestPathGenerationArgs(CommonSyntheticGenerationArgs):
-    max_nodes: int = 30
-    min_nodes: int = 3
-    edge_p: float = 0.3
-    train_on_all_tokens: bool = False
-
-
-def _sp_generation_arg_names() -> frozenset[str]:
-    return frozenset(f.name for f in fields(ShortestPathGenerationArgs))
-
-
-_SP_SAMPLE_KEYS = (
-    "max_nodes",
-    "min_nodes",
-    "edge_p",
-    "base_vocab_size",
-    "min_token_length",
-    "max_token_length",
-    "encoding_format",
-)
-
-
-def _sp_sample_from_merged(rng, merged: dict):
-    return generate_sp_sample(rng, **{k: merged[k] for k in _SP_SAMPLE_KEYS})
-
-
-class ShortestPathDataGenerator(BaseDataGenerator):
-    NAME = "sp"
-    ArgsCls = ShortestPathGenerationArgs
-
-    def _build_generator_state_for_loader(
+    @override
+    def generate(
         self,
-        merged: dict,
-        *,
-        seed: int,
-        sample_count: int,
-    ) -> ShortestPathGeneratorState:
-        return ShortestPathGeneratorState(
-            max_nodes=merged["max_nodes"],
-            min_nodes=merged["min_nodes"],
-            edge_p=merged["edge_p"],
-            base_vocab_size=merged["base_vocab_size"],
-            min_token_length=merged["min_token_length"],
-            max_token_length=merged["max_token_length"],
-            encoding_format=merged["encoding_format"],
-            seed=seed,
-            sample_count=sample_count,
+        num_nodes: int | None = None,
+        max_distance: int | None = None,
+    ) -> ShortestPathSynteticTask:
+        num_nodes = self._sample_num_nodes() if num_nodes is None else num_nodes
+        max_distance = np.random.randint(1, self.config.max_distance + 1) if max_distance is None else max_distance
+
+        graph = self.generate_graph(num_nodes=num_nodes)
+        query_node = np.random.choice(graph.nodes, size=1)[0]
+        answer_nodes = self.bfs(graph, query_node, max_distance)
+        target_node = answer_nodes[-1]
+
+        context = [self.config.task_index] + graph.encode()
+        loss_mask = [0] * len(context)
+        if self.config.query_separator_token is not None:
+            context.append(self.config.query_separator_token)
+            loss_mask.append(0)
+        context.extend(query_node.tokens)
+        loss_mask.extend([0] * len(query_node.tokens))
+        context.extend(target_node.tokens)
+        loss_mask.extend([0] * len(target_node.tokens))
+        answer_start_index = len(context)
+        for answer_node in answer_nodes[1:]:
+            context.extend(answer_node.tokens)
+            loss_mask.extend([1] * len(answer_node.tokens))
+        if self.config.eos_token is not None:
+            context.append(self.config.eos_token)
+            loss_mask.append(1)
+
+        return ShortestPathSynteticTask(
+            task_index=self.config.task_index,
+            context=context,
+            loss_mask=loss_mask,
+            graph=graph,
+            query_node=query_node,
+            answer_nodes=answer_nodes,
+            answer_start_index=answer_start_index,
         )
 
-    def generate_sample(self, *, rng=None, common_args=None, **overrides: Any):
-        overrides = dict(overrides)
-        seed = overrides.pop("seed", 42)
-        gen = rng if rng is not None else np.random.default_rng(seed)
-        allowed = _sp_generation_arg_names()
-        merged = self.merged_args_dict(common_args)
-        for k, v in overrides.items():
-            if k in allowed:
-                merged[k] = v
-        return _sp_sample_from_merged(gen, merged)
+    @override
+    def _generate_eval_set(self) -> list[ShortestPathSynteticTask]:
+        eval_set = []
+        for _ in range(self.config.num_eval_samples):
+            eval_set.append(
+                self.generate(num_nodes=self.config.max_nodes, distance=self.config.max_distance)
+            )
+        for eval_task in eval_set:
+            eval_task.context = eval_task.context[:eval_task.answer_start_index]
+        return eval_set
 
-    def evaluate(self, **kwargs):
-        return {"task": self.task_name(), "status": "delegated", **kwargs}
-
-
-def generate_sp_examples(state: ShortestPathGeneratorState):
-    def build_rng(seed: int):
-        return np.random.default_rng(seed)
-
-    def sample_fn(s: ShortestPathGeneratorState, rng):
-        merged = {k: s[k] for k in _SP_SAMPLE_KEYS}
-        result = _sp_sample_from_merged(rng, merged)
-        return {
-            "text": result["text"],
-            "loss_mask": result["loss_mask"],
-            "encoding_format": result.get("encoding_format", "edges_list"),
+    @override
+    def evaluate(
+        self, task: ShortestPathSynteticTask, generation: list[int]
+    ) -> dict[str, float]:
+        generation = list(generation)
+        answer_nodes = task.answer_nodes[1:]
+        sequence, remainder = break_up_sequence_into_words(generation, self.config.graph_generator_config.base_vocab_size)
+        generated_nodes = [node for node in sequence if isinstance(node, NodeWord)]
+        intersection = set(generated_nodes) & set(answer_nodes)
+        prefix_acc = 0
+        for generated_node, expected_node in zip(generated_nodes, answer_nodes):
+            if generated_node == expected_node:
+                prefix_acc += 1
+            else:
+                break
+        correct_nodes = [node for node in generated_nodes if node in task.graph.nodes]
+        res = {
+            "set_accuracy": len(intersection) / len(answer_nodes),
+            "prefix_accuracy": prefix_acc / len(answer_nodes),
+            "valid_nodes_ratio": (len(correct_nodes) / len(generated_nodes)) if len(generated_nodes) > 0 else 0.0,
         }
-
-    yield from BaseDataGenerator.iterate_stateful_samples(state, build_rng=build_rng, sample_fn=sample_fn)
-
-
-ShortestPathDataGenerator._iterate_examples_fn = generate_sp_examples
+        is_correct_path = False
+        if len(correct_nodes) == len(generated_nodes):
+            is_correct_path = True
+            correct_nodes = [task.query_node] + correct_nodes
+            for node, next_node in zip(correct_nodes, correct_nodes[1:]):
+                if next_node not in task.graph.edges.get(node, []):
+                    is_correct_path = False
+                    break
+            res["is_correct_path"] = is_correct_path
+            if is_correct_path:
+                res["path_length_to_min_length"] = (len(correct_nodes) - 1) / len(answer_nodes)
+        return res

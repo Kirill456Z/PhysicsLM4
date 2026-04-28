@@ -21,7 +21,25 @@ export interface DepoTaskSpecific {
   answer_start_index: number
 }
 
-export type TaskSpecific = DepoTaskSpecific | null
+export interface BFSTaskSpecific {
+  type: 'bfs'
+  query_node: number[]
+  answer_sequence: number[][]
+}
+
+export interface ShortestPathTaskSpecific {
+  type: 'shortest_path'
+  query_node: number[]
+  answer_nodes: number[][]
+}
+
+export interface ConCompFactorTaskSpecific {
+  type: 'concomp_factor'
+  answer_nodes: number[][]
+  components: number[][][]
+}
+
+export type TaskSpecific = DepoTaskSpecific | BFSTaskSpecific | ShortestPathTaskSpecific | ConCompFactorTaskSpecific | null
 
 export interface SampleResponse {
   graph: GraphData
@@ -45,4 +63,15 @@ export interface ValidateResponse {
   valid: boolean
   errors: string[]
   parsed?: { tasks: string[] }
+}
+
+export interface TaskTab {
+  tab_name: string
+  task_name: string
+  config_yaml: string
+}
+
+export interface TaskTabsResponse {
+  full_config_yaml: string
+  tabs: TaskTab[]
 }

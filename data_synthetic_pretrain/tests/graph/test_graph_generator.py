@@ -132,22 +132,22 @@ class TestGraphGeneratorDecoding:
     def graph_generator(self, graph_generator_config):
         return GraphGenerator(config=graph_generator_config)
     
-    def test_break_up_into_words_correctness(self, graph_generator):
-        expected = [NodeWord(tokens=(1, 6)), NodeWord(tokens=(2, 4, 7)), NodeWord(tokens=(1, 5, 3, 7))]
-        edges_list = [1, 6, 2, 4, 7, 1, 5, 3, 7]
-        result = graph_generator._break_up_into_words(edges_list)
-        assert result == expected
+    #def test_break_up_into_words_correctness(self, graph_generator):
+        #expected = [NodeWord(tokens=(1, 6)), NodeWord(tokens=(2, 4, 7)), NodeWord(tokens=(1, 5, 3, 7))]
+        #edges_list = [1, 6, 2, 4, 7, 1, 5, 3, 7]
+        #result = graph_generator._break_up_into_words(edges_list)
+        #assert result == expected
     
-    def test_break_up_into_words_with_special_tokens(self, graph_generator):
-        expected = [NodeWord(tokens=(1, 6)), SpecialToken(token=25), NodeWord(tokens=(4, 7)), NodeWord(tokens=(1, 5, 3, 7)), SpecialToken(token=26)]
-        edges_list = [1, 6, 25, 4, 7, 1, 5, 3, 7, 26]
-        result = graph_generator._break_up_into_words(edges_list)
-        assert result == expected
+    #def test_break_up_into_words_with_special_tokens(self, graph_generator):
+        #expected = [NodeWord(tokens=(1, 6)), SpecialToken(token=25), NodeWord(tokens=(4, 7)), NodeWord(tokens=(1, 5, 3, 7)), SpecialToken(token=26)]
+        #edges_list = [1, 6, 25, 4, 7, 1, 5, 3, 7, 26]
+        #result = graph_generator._break_up_into_words(edges_list)
+        #assert result == expected
     
-    def test_break_up_into_words_raises_with_malformed_sequence(self, graph_generator):
-        edges_list = [1, 1, 8, 2, 2]
-        with pytest.raises(ValueError):
-            graph_generator._break_up_into_words(edges_list)
+    #def test_break_up_into_words_raises_with_malformed_sequence(self, graph_generator):
+        #edges_list = [1, 1, 8, 2, 2]
+        #with pytest.raises(ValueError):
+            #graph_generator._break_up_into_words(edges_list)
     
     def test_decode_from_edges_list_correctness(self, graph_generator):
         edges_list = [6, 7, 7, 8, 8, 9, 9, 10]

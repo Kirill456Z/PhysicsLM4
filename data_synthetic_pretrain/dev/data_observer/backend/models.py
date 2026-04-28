@@ -32,6 +32,27 @@ class DefaultConfigResponse(BaseModel):
     config_yaml: str
 
 
+class TaskTab(BaseModel):
+    tab_name: str
+    task_name: str
+    config_yaml: str
+
+
+class TaskTabsResponse(BaseModel):
+    full_config_yaml: str
+    tabs: list[TaskTab]
+
+
+class SaveTaskTabRequest(BaseModel):
+    config_yaml: str
+
+
+class SaveTaskTabResponse(BaseModel):
+    tab_name: str
+    task_name: str
+    updated_full_config_yaml: str
+
+
 class EvaluateRequest(BaseModel):
     config_yaml: str
     task_name: str
@@ -41,9 +62,12 @@ class EvaluateRequest(BaseModel):
     context: list[int]
     loss_mask: list[int]
     answer_start_index: int
-    query_nodes: list[list[int]]
-    answer_nodes: list[list[int]]
-    num_hops: list[int]
+    query_nodes: list[list[int]] | None = None
+    answer_nodes: list[list[int]] | None = None
+    components: list[list[list[int]]] | None = None
+    num_hops: list[int] | None = None
+    query_node: list[int] | None = None
+    answer_sequence: list[list[int]] | None = None
     # Graph data for reconstruction
     graph_nodes: list[list[int]]
     graph_edges: list[dict[str, int]]

@@ -13,9 +13,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from timeit import default_timer as timer
 from typing import Any, Dict
-from data_synthetic_pretrain.dataloader.dataloader import get_generators
-
-from data_synthetic_pretrain.dataloader.dataloader import build_dataloader
+from data_synthetic_pretrain.dataloader.data_generation_args import load_generation_args_from_yaml
+from data_synthetic_pretrain.dataloader.dataloader import build_dataloader, get_generators
 from omegaconf import OmegaConf
 import torch
 import torch.distributed
@@ -121,6 +120,7 @@ def every_n_steps(train_state, freq, acc_step=None, acc_freq=None):
 
 def train(args: TrainArgs):
     prepare_train_args(args)
+    tasks_generation_args = load_generation_args_from_yaml()
     with ExitStack() as context_stack:
         if args.data.tokenizer.name != "none":
             tokenizer = build_tokenizer(args.data.tokenizer.name, args.data.tokenizer.path)
@@ -208,7 +208,7 @@ def train(args: TrainArgs):
 
         # build optimizer after apply parallelisms to the model
         optimizer, scheduler = build_optimizer(model, args.optim, args.steps)
-        if len(args.synthetic_tasks_generation_args.synthetic_tasks) > 0: 
+        if len(tasks_generation_args.synthetic_tasks) > 0: 
             data_loader_state = None
         else:
             data_loader_state = init_dataloader_state_from_args(
@@ -246,10 +246,9 @@ def train(args: TrainArgs):
             MetricLogger(Path(args.dump_dir) / "metrics.jsonl", args)
         )
 
-        if len(args.synthetic_tasks_generation_args.synthetic_tasks) > 0:
+        if len(tasks_generation_args.synthetic_tasks) > 0:
             data_loader = context_stack.enter_context(
                 build_dataloader(
-                    args.synthetic_tasks_generation_args,
                     args.synthetic_tasks_formatting_args,
                 )
             )
@@ -487,11 +486,10 @@ def train(args: TrainArgs):
 
                 logger.info("Launching evals")
                 if args.async_eval_gpus is None:
-                    logger.info(f"launching synthetic evals on {len(args.synthetic_tasks_generation_args.synthetic_tasks)} tasks")
-                    if len(args.synthetic_tasks_generation_args.synthetic_tasks) > 0:
+                    logger.info(f"launching synthetic evals on {len(tasks_generation_args.synthetic_tasks)} tasks")
+                    if len(tasks_generation_args.synthetic_tasks) > 0:
                         generators, _ = get_generators(
-                            args.synthetic_tasks_generation_args,
-                            args.synthetic_tasks_formatting_args, 
+                            args.synthetic_tasks_formatting_args,
                         )
                         launch_eval(eval_args, generators)
                     else:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import List
+from collections import deque
 from data_synthetic_pretrain.graph.models import NodeWord, EncodingConfig, EncodingFormat
 import numpy as np
 from pydantic import BaseModel
@@ -45,6 +46,29 @@ class Graph(BaseModel):
             return self.adjacency_list()
         else:
             raise ValueError(f"Unsupported encoding format: {self.adj_list_encoding_config.format}")
+
+    def bfs(
+        self, start: NodeWord, max_depth: int | None = None
+    ) -> dict[NodeWord, tuple[NodeWord | None, int]]:
+        """Run BFS from *start*, returning nodes in traversal order.
+
+        Returns a dict ``{node: (parent, depth)}`` for every reachable node.
+        Neighbors are processed in lexicographic token order for determinism.
+        If *max_depth* is given, nodes beyond that depth are recorded but not
+        expanded (their children are not enqueued).
+        """
+        result: dict[NodeWord, tuple[NodeWord | None, int]] = {start: (None, 0)}
+        queue: deque[NodeWord] = deque([start])
+        while queue:
+            node = queue.popleft()
+            _, depth = result[node]
+            if max_depth is not None and depth >= max_depth:
+                continue
+            for neighbor in sorted(self.edges.get(node, []), key=lambda x: x.tokens):
+                if neighbor not in result:
+                    result[neighbor] = (node, depth + 1)
+                    queue.append(neighbor)
+        return result
 
     @property
     def n(self) -> int:

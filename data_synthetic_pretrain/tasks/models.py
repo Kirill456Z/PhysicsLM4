@@ -11,6 +11,7 @@ from data_synthetic_pretrain.graph.models import GraphGeneratorConfig, NodeWord
 class BaseSyntheticTaskConfig(BaseModel):
     task_index: int
     graph_generator_config: GraphGeneratorConfig
+    task_name: str = "base"
     eval_dump_dir: str | None = None
 
 

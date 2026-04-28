@@ -28,7 +28,7 @@ class BaseSynteticTaskGenerator:
             eval_path = local_dir / "eval.jsonl"
 
             if not local_dir.exists():
-                logger.info(f"Generating eval set for {self.name}")
+                logger.info(f"Generating eval set for {self.config.task_name}")
                 local_dir.mkdir(parents=True, exist_ok=False)
                 config_path.write_text(self.config.model_dump_json() + "\n", encoding="utf-8")
                 self.eval_set = self._generate_eval_set()
@@ -58,6 +58,10 @@ class BaseSynteticTaskGenerator:
 
     def get_eval_set(self) -> list[SynteticTask]:
         return self.eval_set
+    
+    @abstractmethod
+    def max_generation_length(self) -> int:
+        ...
 
     @abstractmethod
     def evaluate(self, task: SynteticTask, generation: list[int]) -> dict[str, float]:
@@ -79,5 +83,5 @@ class BaseSynteticTaskGenerator:
             results.append(self.evaluate(task, generation))
         results = self._aggregate_eval_results(results)
         return {
-            f"{self.name}/{metric_name}": value for metric_name, value in results.items()
+            f"{self.config.task_name}/{metric_name}": value for metric_name, value in results.items()
         }

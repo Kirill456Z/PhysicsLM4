@@ -119,6 +119,8 @@ class ConCompFactorTaskGenerator(BaseSynteticTaskGenerator):
         node_to_component = {}
         for i, component in enumerate(task.components):
             for node in component:
+                if isinstance(node, dict):
+                    node = NodeWord.model_validate(node)
                 node_to_component[node] = i
         covered_components = [0] * len(task.components)
         for node in valid_nodes:

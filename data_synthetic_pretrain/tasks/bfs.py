@@ -12,7 +12,7 @@ class BFSGenerationConfig(BaseSyntheticTaskConfig):
     max_nodes: int
     eos_token: int
     max_nodes_in_output: int
-    num_eval_samples_per_complexity: int = 50
+    num_eval_samples: int = 100
 
 class BFSSynteticTask(SynteticTask):
     query_node: NodeWord

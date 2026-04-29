@@ -103,6 +103,10 @@ class BFSTaskGenerator(BaseSynteticTaskGenerator):
         self, task: BFSSynteticTask, generation: list[int]
     ) -> dict[str, float]:
         generation = list(generation)
+        has_eos = 0
+        if self.config.eos_token in generation:
+            generation = generation[:generation.index(self.config.eos_token)]
+            has_eos = 1
         sequence, remainder = break_up_sequence_into_words(generation, self.config.graph_generator_config.base_vocab_size)
         generated_nodes = [node for node in sequence if isinstance(node, NodeWord)]
         intersection = set(generated_nodes) & set(task.answer_sequence)
@@ -116,4 +120,5 @@ class BFSTaskGenerator(BaseSynteticTaskGenerator):
             "set_recall": len(intersection) / len(task.answer_sequence),
             "set_precision": (len(intersection) / len(generated_nodes)) if len(generated_nodes) > 0 else 0.0,
             "prefix_accuracy": prefix_acc / len(task.answer_sequence),
+            "has_eos": has_eos,
         }

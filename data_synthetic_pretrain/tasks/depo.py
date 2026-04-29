@@ -137,6 +137,11 @@ class DepoRefactored(BaseSynteticTaskGenerator):
     def evaluate(
         self, task: DepoSynteticTask, generation: list[int]
     ) -> dict[str, float]:
+        generation = list(generation)
+        has_eos = 0
+        if self.config.eos_token is not None and self.config.eos_token in generation:
+            generation = generation[:generation.index(self.config.eos_token)]
+            has_eos = 1
         generation = np.array(generation)
         answer_tokens = np.array(task.answer_nodes[0].tokens)
         is_oov_token = generation > 2 * self.config.graph_generator_config.base_vocab_size
@@ -151,4 +156,5 @@ class DepoRefactored(BaseSynteticTaskGenerator):
         return {
             f"hop_{task.num_hops[0]}/accuracy": np.all(correct),
             f"hop_{task.num_hops[0]}/prefix_accuracy": prefix_correct,
+            "has_eos": has_eos,
         }

@@ -111,6 +111,10 @@ class ConCompFactorTaskGenerator(BaseSynteticTaskGenerator):
         self, task: ConCompFactorSynteticTask, generation: list[int]
     ) -> dict[str, float]:
         generation = list(generation)
+        has_eos = 0
+        if self.config.eos_token is not None and self.config.eos_token in generation:
+            generation = generation[:generation.index(self.config.eos_token)]
+            has_eos = 1
         sequence, remainder = break_up_sequence_into_words(generation, self.config.graph_generator_config.base_vocab_size)
         valid_nodes = [node for node in sequence if isinstance(node, NodeWord) and node in task.graph.nodes]
         res = {
@@ -138,4 +142,5 @@ class ConCompFactorTaskGenerator(BaseSynteticTaskGenerator):
             else:
                 break
         res["prefix_accuracy"] = prefix_acc / len(task.answer_nodes)
+        res["has_eos"] = has_eos
         return res

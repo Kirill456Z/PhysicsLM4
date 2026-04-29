@@ -123,6 +123,10 @@ class ShortestPathTaskGenerator(BaseSynteticTaskGenerator):
         self, task: ShortestPathSynteticTask, generation: list[int]
     ) -> dict[str, float]:
         generation = list(generation)
+        has_eos = 0
+        if self.config.eos_token is not None and self.config.eos_token in generation:
+            generation = generation[:generation.index(self.config.eos_token)]
+            has_eos = 1
         answer_nodes = task.answer_nodes[1:]
         sequence, remainder = break_up_sequence_into_words(generation, self.config.graph_generator_config.base_vocab_size)
         generated_nodes = [node for node in sequence if isinstance(node, NodeWord)]
@@ -138,6 +142,7 @@ class ShortestPathTaskGenerator(BaseSynteticTaskGenerator):
             "set_accuracy": len(intersection) / len(answer_nodes),
             "prefix_accuracy": prefix_acc / len(answer_nodes),
             "valid_nodes_ratio": (len(correct_nodes) / len(generated_nodes)) if len(generated_nodes) > 0 else 0.0,
+            "has_eos": has_eos,
         }
         is_correct_path = False
         if len(correct_nodes) == len(generated_nodes):

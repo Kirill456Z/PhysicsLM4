@@ -377,7 +377,7 @@ def train(args: TrainArgs):
                 acc_step=None if args.logging.acc_freq else 0,
                 acc_freq=args.logging.acc_freq,
             ):
-                # elapsed_time() internally waits for both events — no explicit sync needed
+                end_timer.synchronize()
                 curr_iter_time = round(start_timer.elapsed_time(end_timer) * 1e-3, 4)
                 time_delta = timer() - time_last_log
                 wps = nwords_since_last_log / (time_delta * args.distributed.tp_size)

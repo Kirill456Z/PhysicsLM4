@@ -93,7 +93,7 @@ checkpoint:
         every: 20000
         keep: 2
     eval:
-        every: 1000
+        every: 2000
         keep: 2
 
 # Logging settings

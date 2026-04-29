@@ -213,6 +213,42 @@ def _flatten_metrics(metrics: dict[str, Any], prefix: str) -> dict[str, Any]:
     return flat_metrics
 
 
+def eval_on_model(
+    model: Any,
+    tokenizer: Any,
+    cfg: EvalArgs,
+    task_generators: list[BaseSynteticTaskGenerator] | None = None,
+):
+    """Eval using the already-loaded in-memory model, skipping checkpoint consolidation and disk reload."""
+    model.eval()
+    generator = PackedCausalTransformerGenerator(cfg.generator, model, tokenizer)
+
+    val_results = None
+    if task_generators is not None:
+        logger.info("Starting in-memory synthetic eval")
+        val_results = eval_on_synthetic_tasks(generator, task_generators)
+        logger.info(f"All evaluation results: {val_results}")
+        if get_global_rank() == 0 and val_results is not None and wandb.run is not None:
+            synthetic_metrics = _flatten_metrics(val_results, prefix="evals/synthetic/")
+            if synthetic_metrics:
+                if cfg.global_step is not None:
+                    wandb.log(synthetic_metrics, step=cfg.global_step)
+                else:
+                    wandb.log(synthetic_metrics)
+
+    del generator
+    model.train()
+
+    if cfg.metric_log_dir and get_global_rank() == 0 and val_results is not None:
+        val_log_path = Path(cfg.metric_log_dir) / "metrics.validation.jsonl"
+        timestamp: dict[str, Any] = {"created_at": datetime.utcnow().isoformat()}
+        if cfg.global_step is not None:
+            timestamp["global_step"] = cfg.global_step
+        print(json.dumps(timestamp | val_results), file=open(val_log_path, mode="a"), flush=True)
+
+    return val_results
+
+
 def eval_on_val(generator, val_args: ValidationArgs, train_cfg):
     srcs = {}
     for src in val_args.sources:

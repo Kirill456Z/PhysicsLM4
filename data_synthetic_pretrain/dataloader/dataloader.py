@@ -7,7 +7,6 @@ from queue import Empty, Full
 from typing import Iterator, List
 
 import numpy as np
-from copy import deepcopy
 from typing import TypedDict
 from pathlib import Path
 
@@ -37,7 +36,7 @@ def _batched_consume_buffer(
             if not any_alive():
                 break
             try:
-                batch.append(queue.get(timeout=0.1))
+                batch.append(queue.get(timeout=0.01))
             except Empty:
                 pass
         if len(batch) == batch_size:
@@ -137,7 +136,7 @@ class SyntheticDataLoader:
             try:
                 for batch_arr in raw:
                     self.state["sampled_batches"] += 1
-                    yield (batch_arr, deepcopy(self.state))
+                    yield (batch_arr, self.state.copy())
             finally:
                 raw.close()
 
@@ -161,7 +160,7 @@ class SyntheticDataLoader:
             ]
             batch = np.stack(rows, axis=0)
             self.state["sampled_batches"] += 1
-            yield (batch, deepcopy(self.state))
+            yield (batch, self.state.copy())
 
 def get_generators(
     synthetic_tasks_formatting_args: SyntheticTasksFormattingArgs,

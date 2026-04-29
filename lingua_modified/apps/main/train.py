@@ -122,6 +122,7 @@ def train(args: TrainArgs):
     prepare_train_args(args)
     tasks_generation_args = load_generation_args_from_yaml()
     with ExitStack() as context_stack:
+        tokenizer = None
         if args.data.tokenizer.name != "none":
             tokenizer = build_tokenizer(args.data.tokenizer.name, args.data.tokenizer.path)
             num_words = tokenizer.n_words
@@ -275,7 +276,7 @@ def train(args: TrainArgs):
             curr_lr = float(optimizer.param_groups[0]["lr"])
             data_load_start = timer()
             batch, train_state.data_loader_state = next(data_loader)
-            batch = torch.tensor(batch, dtype=torch.long)
+            batch = torch.from_numpy(batch).long()
 
             if every_n_steps(train_state, args.gc_collect_freq, acc_step=0):
                 logger.info("garbage collection")
@@ -284,8 +285,8 @@ def train(args: TrainArgs):
                 gc.collect()
                 logger.info("garbage collection complete")
 
-            input_ids = batch[:, :, 0].cuda()
-            labels = batch[:, :, 1].cuda()
+            input_ids = batch[:, :, 0].to("cuda", non_blocking=True)
+            labels = batch[:, :, 1].to("cuda", non_blocking=True)
             data_load_time = round(timer() - data_load_start, 4)
             nwords_since_last_log += input_ids.numel()
 
@@ -362,13 +363,8 @@ def train(args: TrainArgs):
                 optimizer.zero_grad()
                 train_state.step += 1
 
-            # updates the scale for next iteration
             # training iteration complete
             end_timer.record()
-
-            torch.cuda.synchronize()
-
-            curr_iter_time = round(start_timer.elapsed_time(end_timer) * 1e-3, 4)
 
             # if profiler is active
             if torch_profiler:
@@ -381,6 +377,8 @@ def train(args: TrainArgs):
                 acc_step=None if args.logging.acc_freq else 0,
                 acc_freq=args.logging.acc_freq,
             ):
+                # elapsed_time() internally waits for both events — no explicit sync needed
+                curr_iter_time = round(start_timer.elapsed_time(end_timer) * 1e-3, 4)
                 time_delta = timer() - time_last_log
                 wps = nwords_since_last_log / (time_delta * args.distributed.tp_size)
 
@@ -488,10 +486,11 @@ def train(args: TrainArgs):
                 if args.async_eval_gpus is None:
                     logger.info(f"launching synthetic evals on {len(tasks_generation_args.synthetic_tasks)} tasks")
                     if len(tasks_generation_args.synthetic_tasks) > 0:
+                        from apps.main.eval import eval_on_model
                         generators, _ = get_generators(
                             args.synthetic_tasks_formatting_args,
                         )
-                        launch_eval(eval_args, generators)
+                        eval_on_model(model, tokenizer, eval_args, generators)
                     else:
                         launch_eval(eval_args)
                 elif get_is_master():

@@ -12,7 +12,7 @@ dump_dir: /scratch/zemlians/physics4lm/mix_checkpoints
 
 steps: 50000
 probe_freq: null
-seed: 63
+seed: 64
 grad_acc_steps: 1
 
 # Optimizer settings

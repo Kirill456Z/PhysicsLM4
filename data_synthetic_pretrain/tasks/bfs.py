@@ -71,7 +71,7 @@ class BFSTaskGenerator(BaseSynteticTaskGenerator):
         loss_mask.extend([0] * len(query_node.tokens))
         answer_nodes = self.resolve_for_query(graph, query_node)
         answer_nodes = answer_nodes[:self.config.max_nodes_in_output]
-        answer_start_index = len(context) + 1
+        answer_start_index = len(context)
         for answer_node in answer_nodes:
             context.extend(answer_node.tokens)
             loss_mask.extend([1] * len(answer_node.tokens))

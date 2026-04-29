@@ -129,6 +129,8 @@ class ConCompFactorTaskGenerator(BaseSynteticTaskGenerator):
         res["component_recall"] = sum([1 for i in covered_components if i > 0]) / len(task.components)
         res["component_precision"] = (sum([1 for i in covered_components if i == 1]) / len(valid_nodes)) if len(valid_nodes) > 0 else 0.0,
         res["accuracy"] = (sequence == task.answer_nodes)
+        res["num_generated_nodes"] = len(valid_nodes)
+        res["generated_nodes_to_epected_ratio"] = len(valid_nodes) / len(task.answer_nodes)
         prefix_acc = 0
         for generated_node, expected_node in zip(sequence, task.answer_nodes):
             if generated_node == expected_node:

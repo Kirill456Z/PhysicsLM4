@@ -1,6 +1,6 @@
-from re import A
+import heapq
 from data_synthetic_pretrain.graph.models import GraphGeneratorConfig
-from data_synthetic_pretrain.graph.graph import Graph 
+from data_synthetic_pretrain.graph.graph import Graph
 from data_synthetic_pretrain.graph.models import NodeWord, SpecialToken, EncodingFormat
 from collections import defaultdict
 import numpy as np
@@ -28,6 +28,8 @@ class GraphGenerator:
                 self.config.max_connectivity_components,
                 self.config.min_concomp_size,
             )
+        for node in graph.edges:
+            graph.edges[node].sort(key=lambda x: x.tokens)
         return graph
 
     def _merge_components(
@@ -66,17 +68,26 @@ class GraphGenerator:
                 components.add(component)
                 visited.update(component)
 
-        comps_list = sorted(components, key=lambda x: len(x))
-        while len(components) >= 2:
+        counter = 0
+        heap: list = []
+        for c in components:
+            heapq.heappush(heap, (len(c), counter, c))
+            counter += 1
+
+        while len(heap) >= 2:
+            size0, _, _ = heap[0]
             too_many = max_connectivity_components is not None and len(components) > max_connectivity_components
-            too_small = min_concomp_size is not None and len(comps_list[0]) < min_concomp_size
+            too_small = min_concomp_size is not None and size0 < min_concomp_size
             if not too_many and not too_small:
                 break
-            comp1, comp2 = comps_list[0], comps_list[1]
+            _, _, comp1 = heapq.heappop(heap)
+            _, _, comp2 = heapq.heappop(heap)
             components.discard(comp1)
             components.discard(comp2)
-            components.add(self._merge_components(graph, comp1, comp2))
-            comps_list = sorted(components, key=lambda x: len(x))
+            merged = self._merge_components(graph, comp1, comp2)
+            components.add(merged)
+            heapq.heappush(heap, (len(merged), counter, merged))
+            counter += 1
         return graph
     
     def generate_node_words(self, n_words: int) -> list[NodeWord]:
@@ -94,10 +105,8 @@ class GraphGenerator:
         if not self.config.is_directed:
             adj_matrix |= adj_matrix.T
         edges = defaultdict(list)
-        for i in range(num_nodes):
-            for j in range(num_nodes):
-                if adj_matrix[i, j]:
-                    edges[nodes[i]].append(nodes[j])
+        for i, j in np.argwhere(adj_matrix):
+            edges[nodes[i]].append(nodes[j])
         return Graph(nodes=nodes, edges=dict(edges), adj_list_encoding_config=self.config.encoding_config)
 
     def generate_dag(self, num_nodes: int) -> Graph:

@@ -64,7 +64,7 @@ class Graph(BaseModel):
             _, depth = result[node]
             if max_depth is not None and depth >= max_depth:
                 continue
-            for neighbor in sorted(self.edges.get(node, []), key=lambda x: x.tokens):
+            for neighbor in self.edges.get(node, []):
                 if neighbor not in result:
                     result[neighbor] = (node, depth + 1)
                     queue.append(neighbor)

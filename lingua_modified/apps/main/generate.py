@@ -438,12 +438,15 @@ class PackedCausalTransformerGenerator:
                 for seq_id, tok in enumerate(next_token.squeeze(0).tolist()):
                     if not is_done[seq_id]:
                         generated_tokens[seq_id].append(tok)
-                        current_end_str = self.tokenizer.decode(
-                            generated_tokens[seq_id][-self.max_until_size :]
-                        )
-                        contains_end_string = any(
-                            [e in current_end_str for e in self.until]
-                        )
+                        if self.until:
+                            current_end_str = self.tokenizer.decode(
+                                generated_tokens[seq_id][-self.max_until_size :]
+                            ) or ""
+                            contains_end_string = any(
+                                e in current_end_str for e in self.until
+                            )
+                        else:
+                            contains_end_string = False
                         eos_reached = eos_id is not None and tok == eos_id
                         is_done[seq_id] = contains_end_string or eos_reached
                 if all(is_done):

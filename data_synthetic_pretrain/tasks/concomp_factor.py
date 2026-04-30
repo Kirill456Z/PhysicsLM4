@@ -118,7 +118,7 @@ class ConCompFactorTaskGenerator(BaseSynteticTaskGenerator):
         sequence, remainder = break_up_sequence_into_words(generation, self.config.graph_generator_config.base_vocab_size)
         valid_nodes = [node for node in sequence if isinstance(node, NodeWord) and node in task.graph.nodes]
         res = {
-            "valid_nodes_ratio": len(valid_nodes) / len(sequence),
+            "valid_nodes_ratio": len(valid_nodes) / len(sequence) if len(sequence) > 0 else 0.0,
         }
         node_to_component = {}
         for i, component in enumerate(task.components):

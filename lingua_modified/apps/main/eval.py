@@ -220,8 +220,13 @@ def eval_on_model(
     task_generators: list[BaseSynteticTaskGenerator] | None = None,
 ):
     """Eval using the already-loaded in-memory model, skipping checkpoint consolidation and disk reload."""
-    model.eval()
-    generator = PackedCausalTransformerGenerator(cfg.generator, model, tokenizer)
+    # If the training model is torch.compile-wrapped, use the original (FSDP) module for eval.
+    # torch.compile caches graphs by (signature, shape); eval uses different shapes and keyword
+    # args than training, which triggers recompilation on every call — the main source of slowness.
+    # _orig_mod is the FSDP-wrapped model, so distributed hooks still fire via model().
+    eval_model = getattr(model, '_orig_mod', model)
+    eval_model.eval()
+    generator = PackedCausalTransformerGenerator(cfg.generator, eval_model, tokenizer)
 
     val_results = None
     if task_generators is not None:
@@ -237,7 +242,7 @@ def eval_on_model(
                     wandb.log(synthetic_metrics)
 
     del generator
-    model.train()
+    eval_model.train()
 
     if cfg.metric_log_dir and get_global_rank() == 0 and val_results is not None:
         val_log_path = Path(cfg.metric_log_dir) / "metrics.validation.jsonl"

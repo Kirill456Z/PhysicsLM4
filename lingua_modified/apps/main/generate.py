@@ -340,7 +340,7 @@ class PackedCausalTransformerGenerator:
         # Prefilling is done by taking multiple packed sequences and
         # doing block diagonal attention on them so they remain independent
         self.setup_prefilling(lengths=lengths)
-        prefill_out = self.model.forward(
+        prefill_out = self.model(
             tokens,
             tok_idx=self.prefill_tok_id,
             # Zeyuan's edit note: enforcing the use of SDPA attention, which employs a straightforward causal mask. Flex_attention also works, with minor differences in floating-point computations.
@@ -365,7 +365,7 @@ class PackedCausalTransformerGenerator:
         doc_mask = self.current_doc_id.unsqueeze(1) == self.padded_doc_id.unsqueeze(0)
         caus_mask = self.current_tok_id.unsqueeze(1) >= self.padded_tok_id.unsqueeze(0)
         mask = doc_mask & caus_mask
-        out = self.model.forward(
+        out = self.model(
             current_token,
             tok_idx=self.current_tok_id,  # n_seqs
             mask=mask,

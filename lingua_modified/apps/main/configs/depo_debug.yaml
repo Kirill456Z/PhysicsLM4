@@ -36,7 +36,7 @@ distributed:
 
 # Model architecture (GPT-2 Small: 117M params)
 model:
-    seed: 51
+    seed: 52
     dim: 512
     n_layers: 8
     n_heads: 8

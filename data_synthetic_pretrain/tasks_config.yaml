@@ -55,7 +55,7 @@ synthetic_tasks_generation_args:
       max_distance: 5
       num_eval_samples: 100
       query_separator_token: 101
-      eos_tokens: 102
+      eos_token: 102
       graph_generator_config:
         max_connectivity_components: 5
         min_concomp_size: 5
@@ -78,7 +78,7 @@ synthetic_tasks_generation_args:
       max_distance: 5
       num_eval_samples: 100
       query_separator_token: 101
-      eos_tokens: 102
+      eos_token: 102
       graph_generator_config:
         max_connectivity_components: 5
         min_concomp_size: 5

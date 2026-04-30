@@ -242,6 +242,13 @@ def eval_on_model(
                     wandb.log(synthetic_metrics)
 
     del generator
+    # clear_cache() attached kv_cache onto TransformerBlock modules during generation.
+    # Those attributes must be removed before training resumes: torch.compile guards on
+    # module structure, so their presence triggers retracing, and the training forward
+    # passes tok_idx=None which causes kv_cache.update(xk, xv, None) to crash.
+    for module in eval_model.modules():
+        if hasattr(module, 'kv_cache'):
+            del module.kv_cache
     eval_model.train()
 
     if cfg.metric_log_dir and get_global_rank() == 0 and val_results is not None:

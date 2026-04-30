@@ -14,6 +14,8 @@ steps: 80000
 probe_freq: null
 seed: 64
 grad_acc_steps: 1
+include_generators:
+    - depo_edges_list
 
 # Optimizer settings
 optim:

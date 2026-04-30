@@ -27,6 +27,7 @@ class SyntheticTasksFormattingArgs:
     n_workers: int = 8
     no_train_label_token: int = -100
     eval_dump_dir: str | None = None
+    include_generators: list[str] | None = None
 
 
 def load_generation_args_from_yaml(path: str | Path | None = None) -> SyntheticTasksGenerationArgs:

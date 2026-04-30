@@ -71,6 +71,7 @@ class TrainArgs:
     logging: LoggingArgs = field(default_factory=LoggingArgs)
 
     synthetic_tasks_formatting_args: SyntheticTasksFormattingArgs = field(default_factory=SyntheticTasksFormattingArgs)
+    include_generators: list[str] | None = None
 
     # If set to None, eval is run locally otherwise it launches a new job with the given number of gpus
     async_eval_gpus: Optional[int] = None
@@ -231,7 +232,7 @@ def _apply_data_to_synthetic_tasks_formatting_args(args: TrainArgs) -> None:
     fmt.n_workers = d.n_workers
     fmt.no_train_label_token = d.no_train_label_token
     fmt.eval_dump_dir = args.data.eval_dump_dir
-
+    fmt.include_generators = args.include_generators
 
 def prepare_train_args(args: TrainArgs):
     _apply_data_to_synthetic_tasks_formatting_args(args)

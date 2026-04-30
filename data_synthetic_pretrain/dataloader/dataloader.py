@@ -171,11 +171,14 @@ def get_generators(
     effective_eval_dump_dir = eval_dump_dir if eval_dump_dir is not None else synthetic_tasks_formatting_args.eval_dump_dir
     generators = []
     weights = []
+    include_generators = synthetic_tasks_formatting_args.include_generators
     for task_gen_args in generation_args.synthetic_tasks:
         task_gen_args.generation_args["eval_dump_dir"] = effective_eval_dump_dir
         task_generator = SYNTHETIC_TASKS[task_gen_args.task_name].build_from_dict(
             task_gen_args.generation_args
         )
+        if include_generators is not None and task_generator.config.task_name not in include_generators:
+            continue
         generators.append(task_generator)
         weights.append(task_gen_args.weight or 1.0)
     return generators, weights

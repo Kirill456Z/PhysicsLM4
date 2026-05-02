@@ -243,10 +243,14 @@ def prepare_train_args(args: TrainArgs):
     version_for_naming = semver_tag  # Always use semver for wandb/run names
 
     name_suffix = os.environ.get('NAME_SUFFIX', None)
+    wandb_run_base_name = os.environ.get('WANDB_RUN_BASE_NAME', None)
 
-    run_name = build_run_name(args)
-    if name_suffix:
-        run_name = f"{run_name.rstrip('_')}_{name_suffix}"
+    if wandb_run_base_name:
+        run_name = wandb_run_base_name
+    else:
+        run_name = build_run_name(args)
+        if name_suffix:
+            run_name = f"{run_name.rstrip('_')}_{name_suffix}"
 
     args.name = run_name
     args.logging.wandb.name = run_name

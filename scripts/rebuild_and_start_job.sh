@@ -18,6 +18,7 @@ CONFIG_NAME="depo_debug"  # Default config (without .yaml extension)
 START_NEW_WANDB_RUN=false  # When set, start a new wandb run instead of continuing the checkpoint's run
 WANDB_RUN_ID=""  # Explicit wandb run ID to resume (for runs created before deterministic IDs)
 NAME_SUFFIX=""  # Optional suffix appended to the wandb run name
+WANDB_BASE_NAME=""  # Optional: fully override the wandb base run name
 VALID_TASKS=("run_jupyter_notebook" "train_depo" "log_from_trained" "pretokenize")
 PRETOKENIZE_JOBS=1  # Number of parallel pretokenize jobs (each processes a subset of chunks)
 for arg in "$@"; do
@@ -54,6 +55,9 @@ for arg in "$@"; do
             ;;
         --name-suffix=*)
             NAME_SUFFIX="${arg#*=}"
+            ;;
+        --wandb-base-name=*)
+            WANDB_BASE_NAME="${arg#*=}"
             ;;
         --pretokenize-jobs=*)
             PRETOKENIZE_JOBS="${arg#*=}"
@@ -153,7 +157,7 @@ else
     # Save config copy to recipe_stashes with semver version
     CONFIG_SRC="${CONFIGS_DIR}/${CONFIG_NAME}.yaml"
     CONFIG_DST="${RECIPE_STASHES_DIR}/${CONFIG_NAME}_${NEW_TAG}.yaml"
-    mkdir -p "$RECIPE_STASHES_DIR"
+    mkdir -p "$(dirname "$CONFIG_DST")"
     if [ -f "$CONFIG_SRC" ]; then
         cp "$CONFIG_SRC" "$CONFIG_DST"
         echo "Saved config copy to $CONFIG_DST"
@@ -224,6 +228,9 @@ if [ -n "$WANDB_RUN_ID" ]; then
 fi
 if [ -n "$NAME_SUFFIX" ]; then
     ENV_VARS="$ENV_VARS --environment NAME_SUFFIX=${NAME_SUFFIX}"
+fi
+if [ -n "$WANDB_BASE_NAME" ]; then
+    ENV_VARS="$ENV_VARS --environment WANDB_RUN_BASE_NAME=${WANDB_BASE_NAME}"
 fi
 if [ -n "$CHECKPOINT_VERSION" ]; then
     ENV_VARS="$ENV_VARS --environment CHECKPOINT_VERSION=${CHECKPOINT_VERSION}"

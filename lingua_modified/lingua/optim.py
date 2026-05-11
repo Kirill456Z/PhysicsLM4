@@ -23,6 +23,7 @@ class OptimArgs:
     scheduler: str = "cosine"
     warmup: int = 2000
     lr_min_ratio: float = 0.1
+    lr_min: float | None = None
     cycle_length: float = 1.0
     cosine_theta: float = 1.0
     annealing_step: int = 1000
@@ -109,18 +110,22 @@ def lr_wsd(
 
 
 def build_lr_fn(args: OptimArgs, n_steps: int):
+    lr_min_ratio = args.lr_min_ratio
+    if args.lr_min is not None:
+        lr_min_ratio = args.lr_min / args.lr
+
     if args.scheduler == "constant":
         lr_fn = lambda x: 1.0
     elif args.scheduler == "linear":
         lr_fn = partial(
-            lr_linear, warmup=args.warmup, n_steps=n_steps, min_ratio=args.lr_min_ratio
+            lr_linear, warmup=args.warmup, n_steps=n_steps, min_ratio=lr_min_ratio
         )
     elif args.scheduler == "inv_sqrt":
         lr_fn = partial(
             lr_inv_sqrt,
             warmup=args.warmup,
             exp_factor=args.exp_factor,
-            min_ratio=args.lr_min_ratio,
+            min_ratio=lr_min_ratio,
         )
     elif args.scheduler == "cosine":
         lr_fn = partial(
@@ -129,7 +134,7 @@ def build_lr_fn(args: OptimArgs, n_steps: int):
             n_steps=n_steps,
             cycle_length=args.cycle_length,
             theta=args.cosine_theta,
-            min_ratio=args.lr_min_ratio,
+            min_ratio=lr_min_ratio,
         )
     elif args.scheduler == "wsd":
         assert args.decay_fraction < args.cycle_length
@@ -139,7 +144,7 @@ def build_lr_fn(args: OptimArgs, n_steps: int):
             n_steps=n_steps,
             decay_fraction=args.decay_fraction,
             cycle_length=args.cycle_length,
-            min_ratio=args.lr_min_ratio,
+            min_ratio=lr_min_ratio,
         )
     else:
         raise NotImplementedError(f"Unknown scheduler: {args.scheduler}")

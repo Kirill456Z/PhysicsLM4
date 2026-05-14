@@ -26,8 +26,8 @@ include_generators:
 
 # Optimizer settings
 optim:
-    lr: 3e-4
-    lr_min: 3e-5
+    lr: 1e-4
+    lr_min: 5e-6
     warmup: 1000
     lr_min_ratio: 0.1
     weight_decay: 0.03
@@ -46,7 +46,7 @@ distributed:
 
 # Model architecture (GPT-2 Small: 117M params)
 model:
-    seed: 54
+    seed: 53
     dim: 512
     n_layers: 8
     n_heads: 8

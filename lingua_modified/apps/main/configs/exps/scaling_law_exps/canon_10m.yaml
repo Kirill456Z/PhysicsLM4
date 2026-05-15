@@ -44,12 +44,12 @@ distributed:
     selective_activation_checkpointing: false
     tp_size: 1
 
-# Model architecture (GPT-2 Small: 117M params)
+# Model architecture (~10M params, dim/n_layers ratio=64)
 model:
     seed: 54
-    dim: 512
-    n_layers: 8
-    n_heads: 8
+    dim: 256
+    n_layers: 4
+    n_heads: 4
     head_dim: 64
     # Unified vocab layout (B=4):
     #   0: PAD  1-4: base tokens  5-8: EOW markers
@@ -60,7 +60,7 @@ model:
     vocab_size: 512
 
     rope_theta: 10000.0
-    canon_set: ""
+    canon_set: "ABCD"
     use_fast_conv1d:  true
     canon_kernel: 4
     canon_init: default
@@ -124,4 +124,3 @@ eval:
   generator:
     max_gen_len: 10
     show_progress: true
-

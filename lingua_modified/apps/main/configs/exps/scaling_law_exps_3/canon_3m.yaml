@@ -16,13 +16,13 @@ seed: 64
 grad_acc_steps: 1
 include_generators:
     - concomp_factor_edges_list
-    - concomp_factor_adjacency_list
+    - concomp_factor_adj_list
     - depo_edges_list
-    - depo_adjacency_list
+    - depo_adj_list
     - shortest_path_edges_list
-    - shortest_path_adjacency_list
+    - shortest_path_adj_list
     - bfs_edges_list
-    - bfs_adjacency_list
+    - bfs_adj_list
 
 # Optimizer settings
 optim:
@@ -44,12 +44,12 @@ distributed:
     selective_activation_checkpointing: false
     tp_size: 1
 
-# Model architecture (~30M params, dim/n_layers ratio=64)
+# Model architecture (~10M params, dim/n_layers ratio=64)
 model:
     seed: 54
-    dim: 384
-    n_layers: 6
-    n_heads: 6
+    dim: 256
+    n_layers: 4
+    n_heads: 4
     head_dim: 64
     # Unified vocab layout (B=4):
     #   0: PAD  1-4: base tokens  5-8: EOW markers
@@ -60,7 +60,7 @@ model:
     vocab_size: 512
 
     rope_theta: 10000.0
-    canon_set: ""
+    canon_set: "ABCD"
     use_fast_conv1d:  true
     canon_kernel: 4
     canon_init: default

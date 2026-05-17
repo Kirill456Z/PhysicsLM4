@@ -16,18 +16,17 @@ seed: 64
 grad_acc_steps: 1
 include_generators:
     - concomp_factor_edges_list
-    - concomp_factor_adjacency_list
+    - concomp_factor_adj_list
     - depo_edges_list
-    - depo_adjacency_list
+    - depo_adj_list
     - shortest_path_edges_list
-    - shortest_path_adjacency_list
+    - shortest_path_adj_list
     - bfs_edges_list
-    - bfs_adjacency_list
+    - bfs_adj_list
 
 # Optimizer settings
 optim:
-    lr: 3e-4
-    lr_min: 3e-5
+    lr: 6e-4
     warmup: 1000
     lr_min_ratio: 0.1
     weight_decay: 0.03
@@ -44,12 +43,12 @@ distributed:
     selective_activation_checkpointing: false
     tp_size: 1
 
-# Model architecture (~10M params, dim/n_layers ratio=64)
+# Model architecture (GPT-2 Small: 117M params)
 model:
-    seed: 54
-    dim: 256
-    n_layers: 4
-    n_heads: 4
+    seed: 52
+    dim: 512
+    n_layers: 8
+    n_heads: 8
     head_dim: 64
     # Unified vocab layout (B=4):
     #   0: PAD  1-4: base tokens  5-8: EOW markers
@@ -124,3 +123,4 @@ eval:
   generator:
     max_gen_len: 10
     show_progress: true
+

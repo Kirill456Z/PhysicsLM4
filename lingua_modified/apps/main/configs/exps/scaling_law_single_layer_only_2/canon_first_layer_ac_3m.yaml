@@ -16,13 +16,13 @@ seed: 64
 grad_acc_steps: 1
 include_generators:
     - concomp_factor_edges_list
-    - concomp_factor_adjacency_list
+    - concomp_factor_adj_list
     - depo_edges_list
-    - depo_adjacency_list
+    - depo_adj_list
     - shortest_path_edges_list
-    - shortest_path_adjacency_list
+    - shortest_path_adj_list
     - bfs_edges_list
-    - bfs_adjacency_list
+    - bfs_adj_list
 
 # Optimizer settings
 optim:

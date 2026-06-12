@@ -29,7 +29,7 @@ model:
   head_dim: 64
   vocab_size: 512
   rope_theta: 10000.0
-  canon_set: 
+  canon_set:  ""
   use_fast_conv1d: True
   canon_kernel: 4
   canon_init: default

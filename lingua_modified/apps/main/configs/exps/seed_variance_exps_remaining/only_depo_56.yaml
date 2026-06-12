@@ -1,7 +1,7 @@
 name: mix_{semver_tag}
 dump_dir: /scratch/zemlians/physics4lm/mix_checkpoints
 steps: 80000
-probe_freq: None
+probe_freq: null
 seed: 56
 grad_acc_steps: 1
 include_generators: ['depo_edges_list', 'depo_adj_list']

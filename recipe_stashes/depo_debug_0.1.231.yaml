@@ -1,0 +1,116 @@
+# Depo Dataset Training Configuration
+# This config is for debugging/testing the Depo dataset with masked loss training
+
+name: "depo_{semver_tag}"
+dump_dir: /scratch/zemlians/physics4lm/depo_checkpoints
+
+steps: 100000
+probe_freq: null
+seed: 42
+
+data_mode: concomp
+
+grad_acc_steps: 1
+
+# Optimizer settings
+optim:
+    lr: 3e-4
+    warmup: 1000
+    lr_min_ratio: 0.1
+    weight_decay: 0.03
+    epsilon: 1.0e-06
+    beta1: 0.9
+    beta2: 0.98
+
+# Distributed training settings
+distributed:
+    fsdp_type: full_shard
+    compile: true
+    model_dtype: bf16
+    matmul_allow_tf32: false
+    selective_activation_checkpointing: false
+    tp_size: 1
+
+# Model architecture (GPT-2 Small: 117M params)
+model:
+    seed: 49
+    dim: 512          # GPT-2 small hidden size
+    n_layers: 8      # GPT-2 small depth
+    n_heads: 8       # GPT-2 small number of heads
+    head_dim: 64      # 512 / 8 = 64
+    vocab_size: 253   # Optimized small vocab for Depo:
+                      # - Token 0: BOS
+                      # - Tokens 1-100: Base vocab (Depo1 uses up to 50, Depo2 uses up to 3)
+                      # - Tokens 101-200: End-of-word markers
+                      # - Tokens 200-216: Query tokens (200+k for k=0 to 16)
+                      # - Token 250: Separator
+                      # - Token 251: Edge separator
+                      # Total needed: ~260, using 300 for safety buffer
+    
+    rope_theta: 10000.0
+    canon_set: ""
+    use_fast_conv1d:  true
+    canon_kernel: 4
+    canon_init: default  # "zeros" for all-zeros init, "default" for standard Conv1d (kaiming_uniform_), "const_var" for 1/sqrt(kernel_size)
+    train_canon_weights: true  # If false, canon weights are frozen (kept constant as initialized)
+    canon_gamma: false  # If true, add a trainable per-dimension scaling vector (gamma) on canon outputs
+    canon_residual: true
+    # canon_layernorm: true
+    z_loss: false
+
+# Data loading settings
+data:
+    #root_dir: /scratch/zemlians/physics4lm/fineweb_edu  # Directory containing JSONL chunk files
+    root_dir: /scratch/zemlians/physics4lm  # Directory containing JSONL chunk files
+    sources:
+        depo: 1.0
+    
+    batch_size: 256
+    prefetch_size: 512
+    seq_len: 768
+    n_views: 2  # CRITICAL: Must be 2 for masked loss approach
+    enable_packing: false  # Pack multiple Depo examples into one sequence when possible
+    
+    load_async: true
+    seed: 42
+    
+    # CRITICAL: Use mock tokenizer for pre-tokenized data
+    tokenizer:
+        name: mock
+    
+    # Don't add BOS/EOS - Depo data already includes them
+    add_bos: false
+    add_eos: false
+
+# Profiling settings
+profiling:
+    run: false  # Set to true if you want to profile
+
+# Checkpoint settings
+checkpoint:
+    dump:
+        every: 10000 
+        keep: 2
+    eval:
+        every: 2000
+        keep: 2
+
+# Logging settings
+logging:
+    freq: 10
+    acc_freq: 10
+    diagnostics_easy_freq: 50    # grad norms, UWR, canon kernel, instability
+    diagnostics_medium_freq: 500  # activation/residual stats (probe steps)
+    diagnostics_heavy_freq: 0 # covariance, sharpness (probe steps)
+    wandb:
+        entity: kirill456z
+        project: physics4llm
+        name: "depo_{semver_tag}"
+
+eval:
+  eval_dir: "scratch/zemlians/physics4lm/concomp_eval"
+  max_examples: 200
+  max_answer_size: 8
+  num_examples_generate: 500
+  temperature: 0.0
+  max_gen_len: 64

@@ -1,14 +1,35 @@
-[build-system]
-requires = ["poetry-core>=1.9.0"]
-build-backend = "poetry.core.masonry.api"
-
 [project]
 name = "physicslm4"
 version = "0.1.0"
 description = "PhysicsLM4 project"
 authors = []
-requires-python = ">=3.12"
-dynamic = ["dependencies"]
+requires-python = ">=3.12,<4.0"
+dependencies = [
+  "ninja",
+  "numpy",
+  "omegaconf",
+  "msgspec",
+  "rouge-score",
+  "sacrebleu",
+  "sentencepiece",
+  "tiktoken",
+  "blobfile",
+  "wandb",
+  "viztracer",
+  "lm-eval",
+  "scipy",
+  "pynvml",
+  "datatrove",
+  "orjson",
+  "flash-linear-attention",
+  "torch==2.7.0",
+  # run_comp_ui backend
+  "fastapi",
+  "uvicorn[standard]",
+  "pydantic",
+  "pyyaml",
+  "python-dotenv",
+]
 
 [tool.poetry]
 package-mode = false
@@ -33,7 +54,6 @@ datatrove = "*"
 orjson = "*"
 flash-linear-attention = "*"
 torch = "2.7.0"
-xformers = "*"
 
 [tool.pytest.ini_options]
 pythonpath = ["lingua_modified"]
@@ -48,3 +68,5 @@ setup-cuda.sequence = ["install-cuda", "kernel"]
 setup-cuda.help = "Install deps incl. CUDA wheels + register Jupyter kernel (Linux/GPU)"
 ui = { cmd = "bash data_synthetic_pretrain/dev/data_observer/start.sh", help = "Start data_observer frontend UI" }
 ui-backend = { cmd = "bash data_synthetic_pretrain/dev/data_observer/start_backend.sh", help = "Start data_observer backend API" }
+comp-ui-backend = { cmd = "uv run python -m uvicorn main:app --reload --port 8000 --app-dir reports/helpers/run_comp_ui/backend", help = "Start run_comp_ui backend on http://localhost:8000" }
+comp-ui-frontend = { shell = "cd reports/helpers/run_comp_ui/frontend && npm install --silent && npm run dev", help = "Start run_comp_ui frontend on http://localhost:3000" }

@@ -1,0 +1,88 @@
+name: mix_{semver_tag}
+dump_dir: /scratch/zemlians/physics4lm/mix_checkpoints
+steps: 80000
+probe_freq: null
+seed: 56
+grad_acc_steps: 1
+include_generators:
+- concomp_factor_edges_list
+- concomp_factor_adj_list
+- shortest_path_edges_list
+- shortest_path_adj_list
+- bfs_edges_list
+- bfs_adj_list
+optim:
+  lr: 3e-4
+  lr_min: 3e-5
+  warmup: 1000
+  lr_min_ratio: 0.1
+  weight_decay: 0.03
+  epsilon: 1.0e-06
+  beta1: 0.9
+  beta2: 0.98
+distributed:
+  fsdp_type: full_shard
+  compile: true
+  model_dtype: bf16
+  matmul_allow_tf32: false
+  selective_activation_checkpointing: false
+  tp_size: 1
+model:
+  seed: 52
+  dim: 512
+  n_layers: 8
+  n_heads: 8
+  head_dim: 64
+  vocab_size: 512
+  rope_theta: 10000.0
+  canon_set: ''
+  use_fast_conv1d: true
+  canon_kernel: 4
+  canon_init: default
+  train_canon_weights: true
+  canon_gamma: false
+  canon_residual: true
+  z_loss: false
+data:
+  root_dir: /scratch/zemlians/physics4lm
+  eval_dump_dir: /scratch/zemlians/physics4lm/synthetic_eval
+  sources:
+    depo: 1.0
+  batch_size: 128
+  prefetch_size: 1024
+  seq_len: 1024
+  n_views: 2
+  n_workers: 16
+  pad_token: 0
+  no_train_label_token: -100
+  load_async: true
+  seed: 43
+  tokenizer:
+    name: none
+  add_bos: false
+  add_eos: false
+profiling:
+  run: false
+checkpoint:
+  dump:
+    every: 20000
+    keep: 2
+  eval:
+    every: 4000
+    keep: 2
+logging:
+  freq: 10
+  acc_freq: 10
+  diagnostics_easy_freq: 300
+  diagnostics_medium_freq: 5000
+  diagnostics_heavy_freq: 0
+  wandb:
+    entity: kirill456z
+    project: physics4llm
+    name: mix_{semver_tag}
+eval:
+  name: mixed_eval
+  dump_dir: /scratch/zemlians/physics4lm/mixed_eval
+  generator:
+    max_gen_len: 10
+    show_progress: true

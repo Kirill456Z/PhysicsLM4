@@ -29,6 +29,7 @@ dependencies = [
   "pydantic",
   "pyyaml",
   "python-dotenv",
+  "matplotlib>=3.11.0",
 ]
 
 [tool.poetry]

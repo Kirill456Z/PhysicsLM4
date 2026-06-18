@@ -58,6 +58,12 @@ from apps.main.transformer import (
     tp_parallelize,
     get_no_recompute_ops,
 )
+from apps.main.logging import (
+    collect_easy_grad_metrics,
+    collect_easy_weight_metrics,
+    collect_medium_metrics,
+    collect_heavy_metrics,
+)
 from lingua.probe import AutoProbeD
 from lingua.stool import StoolArgs, launch_job
 
@@ -266,6 +272,7 @@ def train(args: TrainArgs):
 
         nwords_since_last_log = 0
         time_last_log = timer()
+        _diag_metrics: dict = {}
         gc.collect()
         while train_state.step < args.steps:
             # We constrain train_state.acc_step to be in range 0 to args.grad_acc_steps - 1
@@ -358,10 +365,36 @@ def train(args: TrainArgs):
                     else grad_norm
                 ).item()
 
+                # Collect easy-tier grad metrics before gradients are zeroed.
+                # next_step is what train_state.step will be after the increment.
+                _next_step = train_state.step + 1
+                if args.logging.diagnostics_easy_freq > 0 and _next_step % args.logging.diagnostics_easy_freq == 0:
+                    _easy_grad = collect_easy_grad_metrics(model)
+                    if get_is_master():
+                        _diag_metrics.update(_easy_grad)
+
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
                 train_state.step += 1
+
+                # Collect easy-tier weight metrics (no gradient dependency).
+                if args.logging.diagnostics_easy_freq > 0 and train_state.step % args.logging.diagnostics_easy_freq == 0:
+                    _easy_weight = collect_easy_weight_metrics(model)
+                    if get_is_master():
+                        _diag_metrics.update(_easy_weight)
+
+                # Collect medium/heavy-tier metrics via a probing forward pass.
+                # All ranks must call these for FSDP all-gather correctness.
+                _is_master = get_is_master()
+                if args.logging.diagnostics_heavy_freq > 0 and train_state.step % args.logging.diagnostics_heavy_freq == 0:
+                    _medium = collect_heavy_metrics(model, input_ids, bsz, seqlen, is_master=_is_master)
+                    if _is_master:
+                        _diag_metrics.update(_medium)
+                elif args.logging.diagnostics_medium_freq > 0 and train_state.step % args.logging.diagnostics_medium_freq == 0:
+                    _medium = collect_medium_metrics(model, input_ids, bsz, seqlen, is_master=_is_master)
+                    if _is_master:
+                        _diag_metrics.update(_medium)
 
             # training iteration complete
             end_timer.record()
@@ -428,6 +461,9 @@ def train(args: TrainArgs):
                 metrics.update(dist_mean_dict(to_sync))
 
                 if get_is_master():
+                    if _diag_metrics:
+                        metrics.update(_diag_metrics)
+                        _diag_metrics.clear()
                     metric_logger.log(metrics)
 
                 gpu_memory_monitor.reset_peak_stats()

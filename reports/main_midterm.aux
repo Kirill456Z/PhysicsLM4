@@ -1,0 +1,87 @@
+\relax 
+\providecommand \babel@aux [2]{\global \let \babel@toc \@gobbletwo }
+\@nameuse{bbl@beforestart}
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{allen_zhu_physics4}
+\citation{allen_zhu_physics4}
+\citation{allen_zhu_physics4}
+\citation{power2022grokking}
+\babel@aux{english}{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Data: Synthetic Benchmarks}{1}{section.1}\protected@file@percent }
+\newlabel{sec:data}{{1}{1}{Data: Synthetic Benchmarks}{section.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Task Descriptions}{1}{subsection.1.1}\protected@file@percent }
+\newlabel{sec:data:tasks}{{1.1}{1}{Task Descriptions}{subsection.1.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{Depo.}{1}{section*.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Brevo.}{1}{section*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.2}Stability Across Seeds}{1}{subsection.1.2}\protected@file@percent }
+\newlabel{sec:data:stability}{{1.2}{1}{Stability Across Seeds}{subsection.1.2}{}}
+\@writefile{toc}{\contentsline {paragraph}{Text modeling is stable.}{1}{section*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Depo exhibits large seed-to-seed variance.}{1}{section*.5}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Training loss for two Llama seeds and two Canon seeds on text modeling. Curves within each model class overlap, demonstrating negligible seed-to-seed variance.}}{2}{figure.caption.4}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{fig:text_stability}{{1}{2}{Training loss for two Llama seeds and two Canon seeds on text modeling. Curves within each model class overlap, demonstrating negligible seed-to-seed variance}{figure.caption.4}{}}
+\newlabel{fig:depo_8l}{{2a}{2}{8L/512D — Llama and Canon seeds}{figure.caption.6}{}}
+\newlabel{sub@fig:depo_8l}{{a}{2}{8L/512D — Llama and Canon seeds}{figure.caption.6}{}}
+\newlabel{fig:depo_12l}{{2b}{2}{12L/768D — two Canon seeds}{figure.caption.6}{}}
+\newlabel{sub@fig:depo_12l}{{b}{2}{12L/768D — two Canon seeds}{figure.caption.6}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Depo training loss across seeds. In the 8L/512D setting one Llama seed converges dramatically faster than all other runs. In the 12L/768D setting one Canon seed stagnates throughout while the other undergoes a sudden grokking event, dropping sharply after many steps of little progress.}}{2}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:depo_stability}{{2}{2}{Depo training loss across seeds. In the 8L/512D setting one Llama seed converges dramatically faster than all other runs. In the 12L/768D setting one Canon seed stagnates throughout while the other undergoes a sudden grokking event, dropping sharply after many steps of little progress}{figure.caption.6}{}}
+\@writefile{toc}{\contentsline {paragraph}{Brevo exhibits the same instability.}{2}{section*.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.3}Discussion}{2}{subsection.1.3}\protected@file@percent }
+\newlabel{sec:data:discussion}{{1.3}{2}{Discussion}{subsection.1.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Canon Layers}{2}{section.2}\protected@file@percent }
+\newlabel{sec:canon}{{2}{2}{Canon Layers}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Background}{2}{subsection.2.1}\protected@file@percent }
+\newlabel{sec:canon:background}{{2.1}{2}{Background}{subsection.2.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Depo loss computed on all tokens (including context), confirming the same high variance observed on answer tokens alone.}}{3}{figure.caption.7}\protected@file@percent }
+\newlabel{fig:depo_all_tokens}{{3}{3}{Depo loss computed on all tokens (including context), confirming the same high variance observed on answer tokens alone}{figure.caption.7}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Brevo training loss for three random seeds. Losses diverge across seeds, mirroring the instability observed on Depo.}}{3}{figure.caption.9}\protected@file@percent }
+\newlabel{fig:brevo}{{4}{3}{Brevo training loss for three random seeds. Losses diverge across seeds, mirroring the instability observed on Depo}{figure.caption.9}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Performance vs.\ Llama Baseline}{4}{subsection.2.2}\protected@file@percent }
+\newlabel{sec:canon:perf}{{2.2}{4}{Performance vs.\ Llama Baseline}{subsection.2.2}{}}
+\newlabel{fig:canon_vs_llama}{{5a}{4}{Canon vs.\ Llama on text modeling}{figure.caption.10}{}}
+\newlabel{sub@fig:canon_vs_llama}{{a}{4}{Canon vs.\ Llama on text modeling}{figure.caption.10}{}}
+\newlabel{fig:ac_vs_abcd}{{5b}{4}{Canon-AC vs.\ Canon-ABCD vs.\ Baseline}{figure.caption.10}{}}
+\newlabel{sub@fig:ac_vs_abcd}{{b}{4}{Canon-AC vs.\ Canon-ABCD vs.\ Baseline}{figure.caption.10}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Left: Canon overtakes the Llama baseline around step 50\,000 and reaches a final loss of 0.776 vs.\ 0.790. Right: Using only the pre-attention and pre-FFN canon positions (AC) captures nearly all of the gain over the baseline.}}{4}{figure.caption.10}\protected@file@percent }
+\newlabel{fig:canon_perf}{{5}{4}{Left: Canon overtakes the Llama baseline around step 50\,000 and reaches a final loss of 0.776 vs.\ 0.790. Right: Using only the pre-attention and pre-FFN canon positions (AC) captures nearly all of the gain over the baseline}{figure.caption.10}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Ablations}{4}{subsection.2.3}\protected@file@percent }
+\newlabel{sec:canon:ablations}{{2.3}{4}{Ablations}{subsection.2.3}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {2.3.1}Kernel Size}{4}{subsubsection.2.3.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Training loss on text modeling for kernel sizes 1, 2, 4, 6, and the Llama baseline. Larger kernels consistently outperform smaller ones; $k{=}1$ is even worse than no canon.}}{4}{figure.caption.11}\protected@file@percent }
+\newlabel{fig:ks_ablation}{{6}{4}{Training loss on text modeling for kernel sizes 1, 2, 4, 6, and the Llama baseline. Larger kernels consistently outperform smaller ones; $k{=}1$ is even worse than no canon}{figure.caption.11}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Initialization ablation on text modeling. All canon variants outperform the Llama baseline; $1/k$ constant initialization is best.}}{5}{figure.caption.12}\protected@file@percent }
+\newlabel{fig:init_ablation}{{7}{5}{Initialization ablation on text modeling. All canon variants outperform the Llama baseline; $1/k$ constant initialization is best}{figure.caption.12}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {2.3.2}Weight Initialization}{5}{subsubsection.2.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {2.3.3}Canon Position Within the Network}{5}{subsubsection.2.3.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Loss for canon applied to all layers, the first layer only, the last layer only, and the Llama baseline.}}{5}{figure.caption.13}\protected@file@percent }
+\newlabel{fig:layer_ablation}{{8}{5}{Loss for canon applied to all layers, the first layer only, the last layer only, and the Llama baseline}{figure.caption.13}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {2.3.4}Normalization Type}{6}{subsubsection.2.3.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Training loss for Canon and Llama under Pre-LN, Post-LN, and Peri-LN normalization. Canon consistently outperforms the same-normalization Llama baseline across all three schemes.}}{6}{figure.caption.14}\protected@file@percent }
+\newlabel{fig:norm_types}{{9}{6}{Training loss for Canon and Llama under Pre-LN, Post-LN, and Peri-LN normalization. Canon consistently outperforms the same-normalization Llama baseline across all three schemes}{figure.caption.14}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces Per-layer gradient contributions for Canon and Llama under each normalization type.}}{6}{figure.caption.15}\protected@file@percent }
+\newlabel{fig:norm_gradients}{{10}{6}{Per-layer gradient contributions for Canon and Llama under each normalization type}{figure.caption.15}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Training Dynamics}{6}{subsection.2.4}\protected@file@percent }
+\newlabel{sec:canon:dynamics}{{2.4}{6}{Training Dynamics}{subsection.2.4}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {2.4.1}Canon Weights: Farther Shifts Receive Larger Weights}{6}{subsubsection.2.4.1}\protected@file@percent }
+\bibcite{allen_zhu_physics4}{1}
+\bibcite{power2022grokking}{2}
+\@writefile{lof}{\contentsline {figure}{\numberline {11}{\ignorespaces Residual stream RMS scale per layer for Canon and Llama under each normalization type.}}{7}{figure.caption.16}\protected@file@percent }
+\newlabel{fig:norm_repr_scale}{{11}{7}{Residual stream RMS scale per layer for Canon and Llama under each normalization type}{figure.caption.16}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {2.4.2}Representation Scaling}{7}{subsubsection.2.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {2.4.3}Gradient Uniformity}{7}{subsubsection.2.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {2.4.4}Outlier Features}{7}{subsubsection.2.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {2.4.5}Cosine Similarity Between Canon Output and Input}{7}{subsubsection.2.4.5}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {12}{\ignorespaces Learned canon weights for types A, B, C, D at layers 0, 3, and 7 throughout training. Weights for larger shifts (more distant tokens) are consistently larger than weights for shorter shifts.}}{8}{figure.caption.17}\protected@file@percent }
+\newlabel{fig:canon_weights}{{12}{8}{Learned canon weights for types A, B, C, D at layers 0, 3, and 7 throughout training. Weights for larger shifts (more distant tokens) are consistently larger than weights for shorter shifts}{figure.caption.17}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {13}{\ignorespaces RMS ratio of canon output to input (top) and residual stream RMS before attention and FFN sublayers (bottom). Canon upscales representations, especially in deeper layers.}}{9}{figure.caption.18}\protected@file@percent }
+\newlabel{fig:rms_ratio}{{13}{9}{RMS ratio of canon output to input (top) and residual stream RMS before attention and FFN sublayers (bottom). Canon upscales representations, especially in deeper layers}{figure.caption.18}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {14}{\ignorespaces Per-layer gradient contribution magnitudes for Canon and Llama mid-training. The Llama baseline shows a steep decline from deep to shallow layers; Canon produces a much flatter profile.}}{9}{figure.caption.19}\protected@file@percent }
+\newlabel{fig:grad_contrib}{{14}{9}{Per-layer gradient contribution magnitudes for Canon and Llama mid-training. The Llama baseline shows a steep decline from deep to shallow layers; Canon produces a much flatter profile}{figure.caption.19}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {15}{\ignorespaces Activation kurtosis per layer for Canon and Llama. High kurtosis indicates outlier features. Canon greatly reduces kurtosis in all layers except layer 0.}}{10}{figure.caption.20}\protected@file@percent }
+\newlabel{fig:kurtosis}{{15}{10}{Activation kurtosis per layer for Canon and Llama. High kurtosis indicates outlier features. Canon greatly reduces kurtosis in all layers except layer 0}{figure.caption.20}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {16}{\ignorespaces Cosine similarity between the canon output and its input for types A, B, C, D across layers. Lower similarity indicates stronger mixing. Canon types A and C mix more in early layers; all types converge toward identity-like behavior in deeper layers.}}{10}{figure.caption.21}\protected@file@percent }
+\newlabel{fig:cos_sim}{{16}{10}{Cosine similarity between the canon output and its input for types A, B, C, D across layers. Lower similarity indicates stronger mixing. Canon types A and C mix more in early layers; all types converge toward identity-like behavior in deeper layers}{figure.caption.21}{}}
+\gdef \@abspage@last{10}

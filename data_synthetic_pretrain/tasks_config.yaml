@@ -1,4 +1,4 @@
-seq_len: 1024
+seq_len: 2048
 batch_size: 4
 pad_token: 0
 no_train_label_token: -100
@@ -125,6 +125,98 @@ synthetic_tasks_generation_args:
       max_nodes: 50
       max_nodes_in_output: 10
       num_eval_samples: 100
+      graph_generator_config:
+        max_connectivity_components: 5
+        min_concomp_size: 5
+        base_vocab_size: 10
+        min_token_length: 2
+        max_token_length: 4
+        is_directed: false
+        is_dag: false
+        edge_probability: 0.02
+        encoding_config:
+          pair_sep: 301
+          node_to_neighbors_sep: 302
+          format: adjacency_list
+  - task_name: bfs
+    weight: 1.0
+    generation_args:
+      task_index: 52
+      task_name: bfs_hard_edges_list
+      query_token: 101
+      eos_token: 102
+      max_nodes: 120
+      max_nodes_in_output: 20
+      num_eval_samples: 100
+      graph_generator_config:
+        max_connectivity_components: 5
+        min_concomp_size: 5
+        base_vocab_size: 10
+        min_token_length: 2
+        max_token_length: 4
+        is_directed: false
+        is_dag: false
+        edge_probability: 0.02
+        encoding_config:
+          pair_sep: 0
+          node_to_neighbors_sep: 0
+          format: edges_list
+  - task_name: bfs
+    weight: 1.0
+    generation_args:
+      task_index: 52
+      task_name: bfs_hard_adj_list
+      query_token: 101
+      eos_token: 102
+      max_nodes: 120
+      max_nodes_in_output: 20
+      num_eval_samples: 100
+      graph_generator_config:
+        max_connectivity_components: 5
+        min_concomp_size: 5
+        base_vocab_size: 10
+        min_token_length: 2
+        max_token_length: 4
+        is_directed: false
+        is_dag: false
+        edge_probability: 0.02
+        encoding_config:
+          pair_sep: 301
+          node_to_neighbors_sep: 302
+          format: adjacency_list
+  - task_name: shortest_path
+    weight: 1.0
+    generation_args:
+      task_index: 51
+      task_name: shortest_path_hard_edges_list
+      max_nodes: 120
+      max_distance: 10
+      num_eval_samples: 100
+      query_separator_token: 101
+      eos_token: 102
+      graph_generator_config:
+        max_connectivity_components: 5
+        min_concomp_size: 5
+        base_vocab_size: 10
+        min_token_length: 2
+        max_token_length: 4
+        is_directed: false
+        is_dag: false
+        edge_probability: 0.02
+        encoding_config:
+          pair_sep: 301
+          node_to_neighbors_sep: 302
+          format: edges_list
+  - task_name: shortest_path
+    weight: 1.0
+    generation_args:
+      task_index: 51
+      task_name: shortest_path_hard_adj_list
+      max_nodes: 120
+      max_distance: 10
+      num_eval_samples: 100
+      query_separator_token: 101
+      eos_token: 102
       graph_generator_config:
         max_connectivity_components: 5
         min_concomp_size: 5

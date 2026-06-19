@@ -22,6 +22,7 @@
   {evidence/08_canon_stability/plots/}%
   {evidence/09_seed_flip/plots/}%
   {evidence/10_variance_recompute/plots/}%
+  {evidence/11_scale_task_robustness/plots/}%
 }
 
 % --- macros ---
@@ -42,25 +43,26 @@ A Reliability Protocol and a Conditional Re-Evaluation of the Canon Layer}
 \maketitle
 
 \begin{abstract}
-Synthetic reasoning benchmarks promise a cheap, controlled testbed for validating
-architectural changes to transformers. We show that this promise is threatened on two
-compounding axes: \emph{seed variance} corrupts the measurement, and \emph{aggregation}
-hides where an effect actually lives. Using the recently proposed \Canon layer (a learned
-causal 1-D convolution inserted within each transformer block) as a running case study, we
-first characterize the seed-variance failure --- the same architecture grokks on some seeds
-and stagnates on others, while text modeling is stable --- and examine two levers commonly
-assumed to fix it. Task mixing reduces the \emph{aggregate} seed variance, but partly by
-driving the hard task to a reliably-failed floor; \Canon's lower per-task spread is mostly a
-mean effect (the coefficient of variation is essentially unchanged). The climax of the
-reliability analysis is a seed-flip audit: pooling all sixteen available 30M / 8-task seeds,
-the headline \Canon-vs-\Llama verdict is \emph{statistically null} (gap $+0.015$, $\sim$1.3$\sigma$,
-permutation $p=0.22$) and its \emph{sign flips} across seed batches. A single aggregate number
-at a single scale is therefore the wrong object of study. We then re-evaluate \Canon
-conditionally and find its benefit is real but scoped: large and seed-robust at small scale
-and on multi-hop retrieval (\Depo), null in the 30M aggregate, and associated with control of
-deep-layer gradient dominance. Our primary contribution is a multi-seed, multi-task,
-multi-scale evaluation protocol for benchmarks of this kind, demonstrated on a verdict that
-flips under exactly the single-number protocol the field currently uses.
+Synthetic reasoning benchmarks are an appealing way to test changes to the transformer
+architecture: they are cheap, controlled, and train to convergence in hours rather than weeks.
+We show that they are also easy to be misled by, using the recently proposed \Canon layer ---
+a small convolution added inside each transformer block --- as a worked example. Two problems
+compound. First, the random seed alone can decide the outcome: the same model masters a task
+on some seeds and never escapes its initial plateau on others, so a comparison run once per
+architecture can report either winner. Ordinary text training, by contrast, is stable across
+seeds. Second, the headline score is an average over many tasks, and that average is dominated
+by the easy tasks every model already solves, which hides the tasks where an architectural
+change actually matters. Together these two problems overturn the result one would report by
+default. Comparing \Canon against a \Llama baseline at 30M parameters using every seed we have
+--- rather than one run each --- the apparent win disappears: the two models are statistically
+indistinguishable, and which one looks better flips from one set of seeds to the next. This
+does not mean \Canon is useless; it means the single averaged number was the wrong thing to
+measure. Examined task by task and scale by scale, \Canon's advantage is real but narrow ---
+large and dependable on small models and on the one task that demands multi-hop retrieval,
+shrinking as models grow, and fading into noise by 30M --- and it traces to the way \Canon
+keeps deep layers from dominating the gradient. Our main contribution is a practical recipe
+for evaluating benchmarks of this kind: vary the seed, the task mixture, and the model size,
+and report how stable the verdict is as seeds accumulate, instead of trusting a single number.
 \end{abstract}
 
 % ===========================================================================
@@ -373,44 +375,55 @@ comes from. For that we decompose by scale and task.
 
 \begin{figure*}[t]
   \centering
-  \begin{subfigure}[b]{0.46\linewidth}
+  \begin{subfigure}[b]{0.32\linewidth}
     \includegraphics[width=\linewidth]{loss_scaling.png}
     \caption{Aggregate loss vs.\ scale.}
     \label{fig:f5:scale}
   \end{subfigure}\hfill
-  \begin{subfigure}[b]{0.46\linewidth}
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{scale_robustness.png}
+    \caption{Permutation $p$-value by scale.}
+    \label{fig:f5:pval}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.32\linewidth}
     \includegraphics[width=\linewidth]{per_task_breakdown_30m.png}
     \caption{Per-task \Canon$-$\Llama delta at 30M.}
     \label{fig:f5:task}
   \end{subfigure}
   \caption{\textbf{The gains are scale-local and task-local.}
-    (a) The \Canon$-$\Llama gap shrinks monotonically with scale ($+0.086$ at 3M to $+0.023$ at
-    100M) and is within seed noise by 30M (Figure~\ref{fig:f3}). (b) At 30M the improvement is
-    concentrated almost entirely in \Depo (multi-hop retrieval, $+0.57$ to $+0.71$); tasks near
-    ceiling (\Bfs, \ShortPath) gain little or nothing. A large \Depo accuracy gain coexists with
-    a null aggregate because the aggregate is dominated by near-ceiling tasks.}
+    (a) The \Canon$-$\Llama gap shrinks monotonically with scale ($+0.090$ at 3M, $+0.048$ at 10M,
+    $+0.015$ at 30M, $+0.023$ at 100M). (b) A two-sided permutation test (20k resamples, five seeds
+    per arch at each scale except 30M where eight seeds are used) finds the gap significant at 3M
+    ($p<0.0001$), 10M ($p=0.0006$), and 100M ($p=0.025$), and null at 30M ($p=0.069$, consistent
+    with the seed-flip audit of Figure~\ref{fig:f3}). (c) At 30M the improvement is concentrated
+    almost entirely in \Depo (multi-hop retrieval); tasks near ceiling (\Bfs, \ShortPath) gain
+    little or nothing. A large \Depo accuracy gain coexists with a null aggregate because the
+    aggregate is dominated by near-ceiling tasks.}
   \label{fig:f5}
 \end{figure*}
 
-\paragraph{Scale.} Across 3M, 10M, 30M, and 100M parameters (five seeds each), the \Canon$-$\Llama
-loss gap shrinks monotonically: $+0.086$ at 3M, $+0.045$ at 10M, $+0.031$ at 30M, $+0.023$ at
-100M (Figure~\ref{fig:f5:scale}). Combined with the seed-flip audit of
-Section~\ref{sec:p1:flip}, which shows the 30M point is within noise, the honest claim is that
-\Canon is significantly better \emph{at small scale} and that the benefit dissolves into seed
-noise by 30M --- not that \Canon is uniformly better. Applying the seed-robustness audit at each
-scale to confirm where the gap is statistically separable from zero is ongoing.
+\paragraph{Scale.} Across 3M, 10M, 30M, and 100M parameters, the \Canon$-$\Llama loss gap shrinks
+monotonically: $+0.090$ at 3M, $+0.048$ at 10M, $+0.015$ at 30M, $+0.023$ at 100M
+(Figure~\ref{fig:f5:scale}). Applying the same permutation test used in
+Section~\ref{sec:p1:flip} at each scale confirms the gap is statistically significant at 3M
+($p<0.0001$), 10M ($p=0.0006$), and 100M ($p=0.025$), and null at 30M ($p=0.069$)
+(Figure~\ref{fig:f5:pval}). The honest claim is therefore that \Canon is \emph{significantly
+better at 3M, 10M, and 100M} and that the benefit dissolves into seed noise at 30M --- not
+that \Canon is uniformly better across scale.
 
 \paragraph{Per task.} At 30M the per-task decomposition (Figure~\ref{fig:f5:task}) shows the
-improvement is concentrated almost entirely in \Depo: $+0.710$ on the adjacency encoding and
-$+0.574$ on the edge encoding, against deltas between $-0.007$ and $+0.062$ on the other six
-tasks. This itself argues for decomposition over aggregation: a large \Depo gain barely moves
-the aggregate, because the aggregate is dominated by tasks at the accuracy ceiling
-(\Bfs, \ShortPath at $0.91$--$0.97$). The concentration is, however, confounded: \Llama is at the
-\emph{floor} on \Depo and at the \emph{ceiling} on \Bfs/\ShortPath, so ``\Canon helps \Depo
-specifically'' cannot yet be separated from ``\Canon helps wherever there is headroom.''
-Disentangling this requires re-running \Bfs/\ShortPath at higher difficulty so the baseline sits
-mid-range (a de-ceiling experiment); this is the highest-value outstanding run. Wherever the
-robust effect lives, we finally ask what mechanism produces it.
+improvement is concentrated almost entirely in \Depo (multi-hop retrieval), against deltas
+near zero on \Bfs, \ShortPath, and \Concomp. This argues for decomposition over aggregation:
+a substantial \Depo gain barely moves the aggregate loss because the aggregate is dominated by
+tasks at the accuracy ceiling (\Bfs, \ShortPath at $0.91$--$0.97$). Applying the permutation
+test to \Depo hop-4 accuracy across the full 8+8 seed pool confirms the gain is seed-robust:
+$p=0.030$ on the edge encoding, $p=0.006$ on the adjacency encoding. The 30M aggregate is
+null; the per-task \Depo gain is not. The concentration of the effect is, however, confounded:
+\Llama sits at the \emph{floor} on \Depo and at the \emph{ceiling} on \Bfs/\ShortPath, so
+``\Canon helps \Depo specifically'' cannot yet be separated from ``\Canon helps wherever there
+is headroom.'' Disentangling this requires re-running \Bfs/\ShortPath at higher difficulty so
+the baseline lands mid-range (a de-ceiling experiment); this is the highest-value outstanding
+run. Wherever the robust effect lives, we finally ask what mechanism produces it.
 
 \subsection{Why: Control of Deep-Layer Gradient Dominance}
 \label{sec:p2:mechanism}
@@ -482,11 +495,11 @@ compounds seed noise (Section~\ref{sec:p1:variance}) with ceiling (\Bfs/\ShortPa
 under exactly the single-number protocol the field currently uses --- the strongest available
 argument for the protocol we advocate.
 
-\paragraph{On \Canon.} The benefit is real but conditional: robust at small scale and on
-multi-hop retrieval (\Depo), null in the 30M aggregate, and associated with control of deep-layer
-gradient dominance (causal status pending the depth test). Practitioners should adopt \Canon with
-this scope in mind rather than as a universal improvement, and should prefer the AC configuration
-with $k\ge2$ across all layers.
+\paragraph{On \Canon.} The benefit is real but conditional: statistically significant at 3M, 10M,
+and 100M (aggregate loss) and on multi-hop retrieval (\Depo) at 30M (per-task accuracy), null in
+the 30M aggregate, and associated with control of deep-layer gradient dominance (causal status
+pending the depth test). Practitioners should adopt \Canon with this scope in mind rather than as
+a universal improvement, and should prefer the AC configuration with $k\ge2$ across all layers.
 
 \paragraph{Limitations.} Our configuration ablations are run on text, where the effect is small,
 and multi-seed intervals on adjacent configurations are still being collected. The largest scale

@@ -7,6 +7,6 @@ recipe_stashes/
 **/__pycache__/*
 physicslm4.egg-info/*
 plots/*
-reports/*
 **/node_modules/*
 **/venv/*
+reports/*

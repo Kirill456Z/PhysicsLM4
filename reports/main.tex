@@ -1,0 +1,530 @@
+\documentclass{article}
+
+\usepackage[english]{babel}
+\usepackage[letterpaper,top=2cm,bottom=2cm,left=2.5cm,right=2.5cm,marginparwidth=1.75cm]{geometry}
+
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{subcaption}
+\usepackage{xspace}
+\usepackage[colorlinks=true, allcolors=blue]{hyperref}
+
+% Plot search paths (one per evidence subfolder)
+\graphicspath{%
+  {evidence/01_seed_variance/plots/}%
+  {evidence/02_canon_performance/plots/}%
+  {evidence/03_canon_ablations/plots/}%
+  {evidence/04_training_dynamics/plots/}%
+  {evidence/05_task_mixing_variance/plots/}%
+  {evidence/06_scaling_laws/plots/}%
+  {evidence/07_dynamics_on_synthetic/plots/}%
+  {evidence/08_canon_stability/plots/}%
+  {evidence/09_seed_flip/plots/}%
+  {evidence/10_variance_recompute/plots/}%
+  {evidence/11_scale_task_robustness/plots/}%
+}
+
+% --- macros ---
+\newcommand{\Canon}{\textsc{Canon}\xspace}
+\newcommand{\Depo}{\textsc{Depo}\xspace}
+\newcommand{\Brevo}{\textsc{Brevo}\xspace}
+\newcommand{\Bfs}{\textsc{Bfs}\xspace}
+\newcommand{\Concomp}{\textsc{ConComp}\xspace}
+\newcommand{\ShortPath}{\textsc{ShortPath}\xspace}
+\newcommand{\Llama}{\textsc{Llama}\xspace}
+
+\title{Trustworthy Verdicts on Synthetic Reasoning Benchmarks:\\
+A Reliability Protocol and a Conditional Re-Evaluation of the Canon Layer}
+\author{Kirill Zemlianskii}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Synthetic reasoning benchmarks are an appealing way to test changes to the transformer
+architecture: they are cheap, controlled, and train to convergence in hours rather than weeks.
+We show that they are also easy to be misled by, using the recently proposed \Canon layer ---
+a small convolution added inside each transformer block --- as a worked example. Two problems
+compound. First, the random seed alone can decide the outcome: the same model masters a task
+on some seeds and never escapes its initial plateau on others, so a comparison run once per
+architecture can report either winner. Ordinary text training, by contrast, is stable across
+seeds. Second, the headline score is an average over many tasks, and that average is dominated
+by the easy tasks every model already solves, which hides the tasks where an architectural
+change actually matters. Together these two problems overturn the result one would report by
+default. Comparing \Canon against a \Llama baseline at 30M parameters using every seed we have
+--- rather than one run each --- the apparent win disappears: the two models are statistically
+indistinguishable, and which one looks better flips from one set of seeds to the next. This
+does not mean \Canon is useless; it means the single averaged number was the wrong thing to
+measure. Examined task by task and scale by scale, \Canon's advantage is real but narrow ---
+large and dependable on small models and on the one task that demands multi-hop retrieval,
+shrinking as models grow, and fading into noise by 30M --- and it traces to the way \Canon
+keeps deep layers from dominating the gradient. Our main contribution is a practical recipe
+for evaluating benchmarks of this kind: vary the seed, the task mixture, and the model size,
+and report how stable the verdict is as seeds accumulate, instead of trusting a single number.
+\end{abstract}
+
+% ===========================================================================
+\section{Introduction}
+\label{sec:intro}
+% ===========================================================================
+
+Experimenting with architectural changes on real language data is expensive, so the field
+increasingly turns to synthetic reasoning benchmarks --- controlled graph and sequence tasks
+that isolate a specific transformer capability and train to convergence in hours rather than
+weeks. The Physics of Language Models framework~\cite{allen_zhu_physics4} exemplifies this
+program: it provides both a battery of such tasks and a candidate architectural improvement,
+the \Canon layer, a learned causal 1-D convolution inserted at one or more positions inside
+each transformer block. The original work reports that \Canon improves performance and leaves
+open why it helps, which hyperparameters matter, and whether the improvement is consistent
+across scale.
+
+A benchmark, however, is only as useful as the trustworthiness of the verdicts it produces.
+We find that verdicts on these benchmarks are threatened on two distinct axes. The first is a
+\emph{measurement} problem: the tasks exhibit extreme seed-to-seed variance --- the same
+architecture grokks on some random seeds and never escapes the initial plateau on others ---
+so a comparison between two architectures run at one seed each can report either sign. The
+second is a \emph{validity} problem: even with the noise tamed, a single aggregate score across
+a task mixture conflates tasks at the accuracy ceiling, tasks at the floor, and the one or two
+tasks where an architectural effect actually concentrates. Both axes share one villain: being
+fooled by a benchmark number.
+
+We make these threats concrete by threading \Canon through the entire paper as a running
+example. The irony that powers our study is that the headline comparison nearly everyone would
+report --- ``\Canon beats \Llama at 30M parameters on the standard 8-task mix'' --- is, measured
+under a protocol that uses every seed we have, \emph{null}.
+
+\paragraph{Contributions.}
+\begin{itemize}
+  \item We characterize the seed-variance failure mode of Physics-style synthetic benchmarks
+        and quantify two commonly-assumed variance fixes (task mixing and architecture),
+        showing that each is partly an artifact: a floor effect and a mean effect respectively
+        (Section~\ref{sec:p1}).
+  \item We introduce a seed-flip audit and show that the 30M / 8-task \Canon-vs-\Llama verdict
+        is statistically null (permutation $p=0.22$) and flips by seed batch, motivating a
+        multi-seed, multi-task, multi-scale evaluation protocol that reports verdict stability
+        as a function of seed count (Section~\ref{sec:p1:flip}).
+  \item Under that protocol we re-evaluate \Canon conditionally: its advantage is robust only
+        at small scale and on multi-hop retrieval (\Depo), dissolves into seed noise by 30M,
+        and is mechanistically associated with suppression of deep-layer gradient dominance
+        (Section~\ref{sec:p2}).
+\end{itemize}
+
+To make the threats precise we first define the tasks and the \Canon layer.
+
+% ===========================================================================
+\section{Background and Problem Statement}
+\label{sec:background}
+% ===========================================================================
+
+\subsection{Synthetic Reasoning Tasks}
+\label{sec:background:tasks}
+
+Each task encodes a graph or sequence problem as a token stream and trains the model to
+predict only the answer tokens. Two encodings are used throughout: \texttt{edges\_list}
+(the graph as an unordered edge set) and \texttt{adj\_list} (grouped by source node).
+Difficulty is governed by knobs such as the maximum number of nodes and the maximum number
+of hops.
+
+\paragraph{\Depo} (multi-hop retrieval) encodes the $n$ edges of a circular permutation
+followed by a query $(q,k)$; the model must emit the $k$-th successor $f^{k}(q)$ with no
+intermediate chain of thought.
+\paragraph{\Concomp} (connected-component factorization) requires partitioning a graph into
+its connected components; we score prefix accuracy.
+\paragraph{\ShortPath} requires emitting a shortest path between two vertices; we score whether
+the returned path is correct.
+\paragraph{\Bfs} requires emitting the set of vertices reachable from a source; we score set
+recall. \Brevo (reasoning breadth over a DAG) is part of the original battery but is excluded
+from the standard mixture due to extreme instability.
+
+The \emph{standard mixture} used in our scaling experiments is the \textbf{8-task mix}: the four
+tasks above under both encodings. Performance on the mixture is summarized by the average
+next-token loss on held-out answer tokens (lower is better).
+
+\subsection{The Canon Layer}
+\label{sec:background:canon}
+
+A \Canon layer is a learned linear convolution over the last $k$ hidden states along the
+sequence dimension. With hidden state $\mathbf{h}_t$ at position $t$ and kernel size $k$,
+the output at position $t$ is
+\begin{equation}
+  \tilde{\mathbf{h}}_t = \sum_{i=0}^{k-1} w_i\, \mathbf{h}_{t-i},
+  \label{eq:canon}
+\end{equation}
+where the $\{w_i\}$ are scalar weights shared across the feature dimension; the convolution is
+causal, so position $t$ never sees the future. A \Canon layer can be inserted at four positions
+within each transformer block: \textbf{A} (pre-attention), \textbf{B} (post-attention),
+\textbf{C} (pre-FFN), and \textbf{D} (post-FFN). Unless stated otherwise we use \Canon-ABCD
+(all four positions, all layers) with kernel size $k=4$. The hyperparameters of interest are
+$k$, the initialization of $\{w_i\}$ in~\eqref{eq:canon}, and the subset of positions and
+layers used.
+
+\subsection{Two Threats to Validity}
+\label{sec:background:threats}
+
+We state the two problems that the rest of the paper addresses.
+\textbf{(T1) Measurement.} Synthetic-task training is seed-treacherous: the variance of the
+final score across random seeds can be larger than the architectural effect being measured.
+\textbf{(T2) Validity.} A single aggregate score over a task mixture is a weighted average that
+is dominated by easy (near-ceiling) tasks and can mask both floor effects and the localization
+of an effect to one or two tasks.
+
+We address T1 first: can we even measure a difference reliably?
+
+% ===========================================================================
+\section{Part 1: Can We Trust the Measurement?}
+\label{sec:p1}
+% ===========================================================================
+
+\subsection{Seed Variance Is Real and Task-Specific}
+\label{sec:p1:variance}
+
+\begin{figure*}[t]
+  \centering
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{text_stable.png}
+    \caption{Text modeling (stable).}
+    \label{fig:f1:text}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{depo_8l_noisy.png}
+    \caption{\Depo, 8 layers (noisy).}
+    \label{fig:f1:depo8}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{depo_12l_grokking.png}
+    \caption{\Depo, 12 layers (grokking).}
+    \label{fig:f1:depo12}
+  \end{subfigure}
+  \caption{\textbf{The benchmark used to validate architectures is seed-treacherous.}
+    On text modeling (a) the seed-to-seed spread in final loss is below $0.002$. On \Depo the
+    same architecture either converges far faster on one seed than the others (b) or groks
+    after a long plateau on one seed while another never solves the task (c). Variance this
+    large can by itself flip an architectural verdict.}
+  \label{fig:f1}
+\end{figure*}
+
+Training the same architecture under different random seeds on \Depo and \Brevo produces
+qualitatively different loss trajectories --- grokking on some seeds, permanent stagnation on
+others --- whereas standard text modeling on FineWeb-Edu yields nearly identical curves
+(Figure~\ref{fig:f1}). The seed-to-seed final-loss spread is below $0.002$ on text but reaches
+$\approx 0.11$ on \Depo. The instability is therefore task-specific, not generic optimizer
+noise: it is a property of the discrete reasoning objective, and it is large enough to flip a
+single-seed comparison between two architectures. If we want to compare \Canon against \Llama,
+we must reduce this variance before trusting any number. Two levers are available.
+
+\subsection{Two Variance Levers --- and What They Hide}
+\label{sec:p1:levers}
+
+\begin{figure*}[t]
+  \centering
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{std_vs_tasks.png}
+    \caption{Aggregate std vs.\ \#tasks.}
+    \label{fig:f2:agg}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{f5_per_task_variance.png}
+    \caption{Per-task \Depo std (floor effect).}
+    \label{fig:f2:floor}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{f7_cv.png}
+    \caption{\Canon vs.\ \Llama on \Depo$\times2$: CV.}
+    \label{fig:f2:cv}
+  \end{subfigure}
+  \caption{\textbf{Both variance levers are partly artifacts.}
+    (a) Mixing more tasks lowers the aggregate seed std. (b) But the fixed-task (\Depo) seed std
+    only collapses at 8 tasks because \Depo accuracy craters to $0.045$ --- the aggregate
+    stabilizes partly by driving the hard task to a reliably-failed floor, not by solving it.
+    (c) \Canon's raw std on \Depo$\times2$ is 46\% below \Llama's, but its coefficient of
+    variation is essentially identical ($0.166$ vs.\ $0.181$): the spread reduction follows the
+    lower mean, not an independent variance-reduction mechanism.}
+  \label{fig:f2}
+\end{figure*}
+
+\paragraph{Data-side: task mixing.} Training on more diverse tasks reduces the aggregate seed
+std monotonically, from $0.045$ on a single task to $0.011$ on the 8-task mix
+(Figure~\ref{fig:f2:agg}). This is real, but the per-task picture is less flattering: the
+seed std of the fixed hard task (\Depo) only collapses at the 8-task mix because \Depo
+accuracy itself craters to $0.045$ (Figure~\ref{fig:f2:floor}). Mixing stabilizes the
+\emph{aggregate} partly by pushing the hard task to a reliably-failed floor rather than by
+genuinely stabilizing its training. The aggregate is also a mean across heterogeneous tasks,
+so its absolute level should not be compared across mixtures of different composition.
+
+\paragraph{Architecture-side: \Canon.} On \Depo$\times2$ (five seeds each), \Canon's raw final-loss
+std is $0.039$ versus \Llama's $0.072$ --- a 46\% reduction that invites the claim that \Canon
+is an architectural variance-reduction mechanism. But \Canon also reaches a much lower mean loss
+($0.237$ vs.\ $0.401$), and once we normalize, the coefficient of variation is essentially equal
+($0.166$ vs.\ $0.181$, only 8\% lower; Figure~\ref{fig:f2:cv}). The spread reduction tracks the
+lower mean; it is not an independent stabilizing mechanism.
+
+Neither lever makes a single aggregate number trustworthy. The question that decides the
+reliability of the whole comparison is whether the headline verdict survives once we use every
+seed available.
+
+\subsection{The Residual Problem: the 30M Verdict Is Null and Flips}
+\label{sec:p1:flip}
+
+\begin{figure*}[t]
+  \centering
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{per_seed_loss.png}
+    \caption{Per-seed final loss.}
+    \label{fig:f3:seed}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{batch_flip.png}
+    \caption{Verdict flips by seed batch.}
+    \label{fig:f3:batch}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{verdict_vs_seedcount.png}
+    \caption{Verdict stability vs.\ seed count.}
+    \label{fig:f3:count}
+  \end{subfigure}
+  \caption{\textbf{The headline 30M / 8-task verdict is null and seed-fragile.}
+    Pooling all 8 \Canon and 8 \Llama seeds, the mean gap is $+0.015$ ($\sim$1.3$\sigma$),
+    permutation $p=0.22$ (a). The sign of the verdict flips by seed batch (b): the dynamics
+    batch favors \Llama ($0.176$ vs.\ $0.180$), the scaling batch favors \Canon ($0.173$ vs.\
+    $0.198$). Even the sign is unstable: at one seed the ``correct'' sign appears 67\% of the
+    time, and at eight seeds only 91\%, with the 95\% interval on the gap still including zero
+    (c).}
+  \label{fig:f3}
+\end{figure*}
+
+We pool every available 30M / 8-task run: eight \Canon seeds and eight \Llama seeds, drawn from
+two independently-launched batches (a dynamics batch and a scaling batch). The aggregate mean
+gap is $+0.015$ in \Canon's favor --- about $1.3\sigma$ --- and a permutation test on the seed
+labels gives $p=0.22$: \textbf{not significant} (Figure~\ref{fig:f3:seed}). Worse, the verdict's
+\emph{sign} is not stable. Split by batch, the dynamics batch reports \Llama better ($0.176$ vs.\
+$0.180$) while the scaling batch reports \Canon better ($0.173$ vs.\ $0.198$); the two batches
+disagree on who wins (Figure~\ref{fig:f3:batch}). Resampling the verdict as a function of seed
+count (Figure~\ref{fig:f3:count}) shows that a single seed recovers the pooled-mean sign only
+67\% of the time, and even eight seeds reach only 91\%, with a 95\% confidence interval on the
+gap that still includes zero.
+
+The headline that nearly everyone would report --- ``\Canon wins at 30M on the standard mix''
+--- is, measured honestly, null. A single aggregate number at a single scale is the wrong object
+of study: it hides seed noise on top of the ceiling and floor effects of
+Section~\ref{sec:p1:levers}. We therefore reframe the question from ``does \Canon win'' to
+``at which scales and on which tasks is there a robust effect, and why'' --- questions that
+remain answerable precisely where the aggregate is not.
+
+% ===========================================================================
+\section{Part 2: When and Why Does Canon Help?}
+\label{sec:p2}
+% ===========================================================================
+
+Since the 30M aggregate carries no signal (Section~\ref{sec:p1:flip}), the positive case for
+\Canon must be made where a robust effect actually exists. We proceed in three steps: which
+configuration matters (Section~\ref{sec:p2:config}), where the gains live across scale and task
+(Section~\ref{sec:p2:where}), and what mechanism underlies them
+(Section~\ref{sec:p2:mechanism}).
+
+\subsection{What Configuration Matters}
+\label{sec:p2:config}
+
+\begin{figure*}[t]
+  \centering
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{kernel_size.png}
+    \caption{Kernel size.}
+    \label{fig:f4:k}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{initialization.png}
+    \caption{Initialization.}
+    \label{fig:f4:init}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{layer_depth.png}
+    \caption{Layer depth.}
+    \label{fig:f4:depth}
+  \end{subfigure}
+  \caption{\textbf{Configuration ablations on the stable text signal.} Kernel size: $k=1$
+    (pointwise rescaling) is worse than no \Canon, and performance improves monotonically for
+    $k\ge2$, so cross-token mixing is the essential ingredient. Initialization: every scheme,
+    including zero init, beats the baseline. Layer depth: applying \Canon to all layers is best;
+    first-layer-only still beats the baseline, but last-layer-only is slightly worse. Lower loss
+    is better.}
+  \label{fig:f4}
+\end{figure*}
+
+We deliberately ablate on \emph{text modeling} --- the stable signal identified in Part 1 ---
+to isolate configuration effects from the seed variance that contaminates synthetic-task
+comparisons. On text, \Canon-ABCD reaches a final loss of $0.781$ versus $0.793$ for the \Llama
+baseline, and \Canon-AC (positions A and C only) reaches $0.782$: positions B and D contribute
+negligibly. The remaining ablations (Figure~\ref{fig:f4}) are consistent and interpretable.
+\textbf{Kernel size:} $k=1$ reduces to a pointwise rescaling and is worse than no \Canon
+($0.797$ vs.\ $0.793$), while $k\ge2$ improves monotonically ($k{=}6$: $0.778$); cross-token
+mixing is essential. \textbf{Initialization:} all schemes, including zero init, beat the
+baseline, with the $1/k$ constant scheme best. \textbf{Layer depth:} all-layers is strongest,
+first-layer-only still beats the baseline, and last-layer-only is slightly worse --- inserting
+\Canon only at the final layer is counterproductive. The benefit is also normalization-agnostic,
+holding under Pre-LN, Post-LN, and Peri-LN.
+
+We emphasize that the text effect is small in absolute terms ($\approx0.01$), so claims that
+distinguish \emph{adjacent} configurations require multi-seed error bars; establishing those
+intervals is ongoing work. Configuration tells us how to deploy \Canon but not where its benefit
+comes from. For that we decompose by scale and task.
+
+\subsection{Where the Gains Live}
+\label{sec:p2:where}
+
+\begin{figure*}[t]
+  \centering
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{loss_scaling.png}
+    \caption{Aggregate loss vs.\ scale.}
+    \label{fig:f5:scale}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{scale_robustness.png}
+    \caption{Permutation $p$-value by scale.}
+    \label{fig:f5:pval}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{per_task_breakdown_30m.png}
+    \caption{Per-task \Canon$-$\Llama delta at 30M.}
+    \label{fig:f5:task}
+  \end{subfigure}
+  \caption{\textbf{The gains are scale-local and task-local.}
+    (a) The \Canon$-$\Llama gap shrinks monotonically with scale ($+0.090$ at 3M, $+0.048$ at 10M,
+    $+0.015$ at 30M, $+0.023$ at 100M). (b) A two-sided permutation test (20k resamples, five seeds
+    per arch at each scale except 30M where eight seeds are used) finds the gap significant at 3M
+    ($p<0.0001$), 10M ($p=0.0006$), and 100M ($p=0.025$), and null at 30M ($p=0.069$, consistent
+    with the seed-flip audit of Figure~\ref{fig:f3}). (c) At 30M the improvement is concentrated
+    almost entirely in \Depo (multi-hop retrieval); tasks near ceiling (\Bfs, \ShortPath) gain
+    little or nothing. A large \Depo accuracy gain coexists with a null aggregate because the
+    aggregate is dominated by near-ceiling tasks.}
+  \label{fig:f5}
+\end{figure*}
+
+\paragraph{Scale.} Across 3M, 10M, 30M, and 100M parameters, the \Canon$-$\Llama loss gap shrinks
+monotonically: $+0.090$ at 3M, $+0.048$ at 10M, $+0.015$ at 30M, $+0.023$ at 100M
+(Figure~\ref{fig:f5:scale}). Applying the same permutation test used in
+Section~\ref{sec:p1:flip} at each scale confirms the gap is statistically significant at 3M
+($p<0.0001$), 10M ($p=0.0006$), and 100M ($p=0.025$), and null at 30M ($p=0.069$)
+(Figure~\ref{fig:f5:pval}). The honest claim is therefore that \Canon is \emph{significantly
+better at 3M, 10M, and 100M} and that the benefit dissolves into seed noise at 30M --- not
+that \Canon is uniformly better across scale.
+
+\paragraph{Per task.} At 30M the per-task decomposition (Figure~\ref{fig:f5:task}) shows the
+improvement is concentrated almost entirely in \Depo (multi-hop retrieval), against deltas
+near zero on \Bfs, \ShortPath, and \Concomp. This argues for decomposition over aggregation:
+a substantial \Depo gain barely moves the aggregate loss because the aggregate is dominated by
+tasks at the accuracy ceiling (\Bfs, \ShortPath at $0.91$--$0.97$). Applying the permutation
+test to \Depo hop-4 accuracy across the full 8+8 seed pool confirms the gain is seed-robust:
+$p=0.030$ on the edge encoding, $p=0.006$ on the adjacency encoding. The 30M aggregate is
+null; the per-task \Depo gain is not. The concentration of the effect is, however, confounded:
+\Llama sits at the \emph{floor} on \Depo and at the \emph{ceiling} on \Bfs/\ShortPath, so
+``\Canon helps \Depo specifically'' cannot yet be separated from ``\Canon helps wherever there
+is headroom.'' Disentangling this requires re-running \Bfs/\ShortPath at higher difficulty so
+the baseline lands mid-range (a de-ceiling experiment); this is the highest-value outstanding
+run. Wherever the robust effect lives, we finally ask what mechanism produces it.
+
+\subsection{Why: Control of Deep-Layer Gradient Dominance}
+\label{sec:p2:mechanism}
+
+\begin{figure*}[t]
+  \centering
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{gradient_comparison_synth_vs_text.png}
+    \caption{Gradient ratio over training.}
+    \label{fig:f6:grad}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{canon_weights_synthetic.png}
+    \caption{Learned \Canon weights by shift.}
+    \label{fig:f6:weights}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.32\linewidth}
+    \includegraphics[width=\linewidth]{kurtosis_comparison_synth_vs_text.png}
+    \caption{Activation kurtosis by layer.}
+    \label{fig:f6:kurt}
+  \end{subfigure}
+  \caption{\textbf{What \Canon does to training dynamics.} (a) \Llama develops strong deep-layer
+    gradient dominance over training (deep/shallow ratio rising to $2.8\times$ on text,
+    $1.72\times$ on synthetic), whereas \Canon holds the ratio well below one ($0.70\times$ text,
+    $0.44\times$ synthetic); both start near $0.5\times$. (b) \Canon weights favor farther shifts
+    from the first checkpoint, a structural bias toward long-range integration. (c) \Canon
+    reshapes activation statistics in a domain-dependent way --- suppressing kurtosis on text,
+    elevating it on synthetic --- which we report descriptively, not as the performance
+    mechanism.}
+  \label{fig:f6}
+\end{figure*}
+
+We caveat this section up front: the dynamics runs are at 30M, where the aggregate effect is null
+(Section~\ref{sec:p1:flip}). We therefore characterize \emph{what \Canon does to training
+dynamics} and ask whether it plausibly translates into performance, rather than assuming \Canon
+``wins'' at 30M.
+
+The candidate mechanism is control of the deep/shallow gradient ratio. \Llama develops pronounced
+deep-layer gradient dominance over training --- the ratio rises from $\approx0.5\times$ at the
+start to $2.8\times$ on text and $1.72\times$ on synthetic --- while \Canon holds the ratio well
+below one ($0.70\times$ text, $0.44\times$ synthetic) throughout (Figure~\ref{fig:f6:grad}). For
+precision we note that on synthetic tasks \Canon's $0.44\times$ is in fact \emph{further} from
+uniform than \Llama's $1.72\times$; the universal pattern is a downward shift that suppresses
+deep-layer dominance, not a move toward uniformity. The learned weights $\{w_i\}$ in
+\eqref{eq:canon} favor farther shifts ($w_2 > w_0$) from the very first checkpoint
+(Figure~\ref{fig:f6:weights}), so \Canon is structurally biased toward integrating non-local
+context from initialization.
+
+Whether this gradient-flow control is causal for performance remains to be established. The
+load-bearing test is a depth ablation at fixed parameter count: if the \Canon$-$\Llama performance
+gap grows with depth --- where gradient pathologies worsen --- the mechanism matters for
+performance; if the gap is flat, the dynamics are a correlate rather than a cause. This test is
+ongoing. Finally, \Canon reshapes activation kurtosis in a domain-dependent way --- suppressing it
+on text (\Llama L1 $\approx157$ vs.\ \Canon $\approx18$) and elevating it on synthetic tasks
+(\Canon L4 $\approx14.7$ vs.\ \Llama $\approx2.0$; Figure~\ref{fig:f6:kurt}). Because both directions
+coincide with improved performance in their respective domains, we report this as a descriptive
+reshaping of activation statistics and make no causal performance claim.
+
+% ===========================================================================
+\section{Discussion and Implications}
+\label{sec:discussion}
+% ===========================================================================
+
+\paragraph{Methodological (primary).} Physics-style synthetic reasoning benchmarks demand
+\emph{multi-seed, multi-task, multi-scale} evaluation, and verdict stability should be reported as
+a function of seed count. A single aggregate number at a single scale is untrustworthy: it
+compounds seed noise (Section~\ref{sec:p1:variance}) with ceiling (\Bfs/\ShortPath) and floor
+(\Depo-in-mix) effects (Section~\ref{sec:p2:where}). We exhibit a verdict that is null and flips
+under exactly the single-number protocol the field currently uses --- the strongest available
+argument for the protocol we advocate.
+
+\paragraph{On \Canon.} The benefit is real but conditional: statistically significant at 3M, 10M,
+and 100M (aggregate loss) and on multi-hop retrieval (\Depo) at 30M (per-task accuracy), null in
+the 30M aggregate, and associated with control of deep-layer gradient dominance (causal status
+pending the depth test). Practitioners should adopt \Canon with this scope in mind rather than as
+a universal improvement, and should prefer the AC configuration with $k\ge2$ across all layers.
+
+\paragraph{Limitations.} Our configuration ablations are run on text, where the effect is small,
+and multi-seed intervals on adjacent configurations are still being collected. The largest scale
+tested is 100M. The mechanism analysis rests on a depth test rather than a direct gradient-flow
+intervention, and the dynamics runs sit at a scale with no aggregate effect. The de-ceiling and
+depth experiments needed to fully close the per-task and mechanism arguments are in progress.
+
+\paragraph{Future work.} Direct intervention on the gradient ratio would upgrade the mechanism
+from association to cause; comparing fixed- versus learned-weight \Canon would isolate the
+structural inductive bias from the learned one; and extending the scaling study beyond 100M would
+test whether the small-scale advantage truly vanishes or merely shrinks below current measurement
+resolution.
+
+% ===========================================================================
+\begin{thebibliography}{9}
+\bibitem{allen_zhu_physics4}
+  Z.\ Allen-Zhu and Y.\ Li.
+  \emph{Physics of Language Models: Part 4.1 --- Architecture Design and the Magic of Canon
+  Layers}.
+  arXiv preprint, 2025.
+
+\bibitem{power2022grokking}
+  A.\ Power, Y.\ Burda, H.\ Edwards, I.\ Babuschkin, and V.\ Misra.
+  \emph{Grokking: Generalization Beyond Overfitting on Small Algorithmic Datasets}.
+  arXiv:2201.02177, 2022.
+\end{thebibliography}
+
+\end{document}

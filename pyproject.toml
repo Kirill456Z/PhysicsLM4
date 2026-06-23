@@ -70,5 +70,11 @@ setup-cuda.help = "Install deps incl. CUDA wheels + register Jupyter kernel (Lin
 ui = { cmd = "bash data_synthetic_pretrain/dev/data_observer/start.sh", help = "Start data_observer frontend UI" }
 ui-backend = { cmd = "bash data_synthetic_pretrain/dev/data_observer/start_backend.sh", help = "Start data_observer backend API" }
 comp-ui-backend = { cmd = "uv run python -m uvicorn main:app --reload --port 8000 --app-dir reports/helpers/run_comp_ui/backend", help = "Start run_comp_ui backend on http://localhost:8000" }
-comp-ui-frontend = { shell = "cd reports/helpers/run_comp_ui/frontend && npm install --silent && npm run dev", help = "Start run_comp_ui frontend on http://localhost:3000" }
+comp-ui-frontend = { shell = "cd reports/helpers/run_comp_ui/frontend && npm install --silent --no-audit && npm run dev", help = "Start run_comp_ui frontend on http://localhost:3000" }
 validate-config = { cmd = "uv run python data_synthetic_pretrain/config_validator.py", help = "Report seq-len distribution for all tasks in tasks_config.yaml (--samples N --windows N...)" }
+
+[dependency-groups]
+dev = [
+    "ipykernel (>=7.3.0,<8.0.0)",
+    "seaborn (>=0.13.2,<0.14.0)"
+]

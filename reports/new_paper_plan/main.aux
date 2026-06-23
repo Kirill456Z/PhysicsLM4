@@ -1,0 +1,73 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{deepseek2024v2,yang2023gla}
+\citation{su2021roformer,kazemnejad2023nope,press2022alibi}
+\citation{shazeer2020glu,shazeer2017moe,fedus2022switch}
+\citation{allen-zhu2023physics1,allen-zhu2024physics31,allen-zhu2023physics32,allen-zhu2025physics33}
+\citation{ye2024physics21}
+\citation{allen-zhu2025canon}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Contributions.}{2}{section*.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Background and Problem Statement}{2}{section.2}\protected@file@percent }
+\newlabel{sec:background}{{2}{2}{Background and Problem Statement}{section.2}{}}
+\@writefile{toc}{\contentsline {paragraph}{The Canon layer.}{2}{section*.2}\protected@file@percent }
+\newlabel{eq:canon}{{1}{2}{The Canon layer}{equation.1}{}}
+\citation{power2022grokking}
+\@writefile{toc}{\contentsline {paragraph}{Tasks and metrics.}{3}{section*.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Configuration.}{3}{section*.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Experiments}{3}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Reliability of Synthetic Benchmarks}{3}{subsection.3.1}\protected@file@percent }
+\newlabel{sec:reliability}{{3.1}{3}{Reliability of Synthetic Benchmarks}{subsection.3.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Canon Consistently Improves Performance Across Seeds and Scales}{3}{subsection.3.2}\protected@file@percent }
+\newlabel{sec:scaling}{{3.2}{3}{Canon Consistently Improves Performance Across Seeds and Scales}{subsection.3.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Canon Substitutes for Model Depth}{4}{subsection.3.3}\protected@file@percent }
+\newlabel{sec:depth}{{3.3}{4}{Canon Substitutes for Model Depth}{subsection.3.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Canon Configuration: What Matters and What Does Not}{4}{subsection.3.4}\protected@file@percent }
+\newlabel{sec:ablations}{{3.4}{4}{Canon Configuration: What Matters and What Does Not}{subsection.3.4}{}}
+\@writefile{toc}{\contentsline {paragraph}{Insertion positions: A and C are sufficient.}{4}{section*.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Initialisation: the benefit is robust.}{4}{section*.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Mechanistic Signatures of \textsc  {Canon}\xspace  }{4}{subsection.3.5}\protected@file@percent }
+\newlabel{sec:mechanism}{{3.5}{4}{Mechanistic Signatures of \Canon }{subsection.3.5}{}}
+\bibstyle{abbrvnat}
+\bibdata{references}
+\bibcite{allen-zhu2025canon}{{1}{2025}{{Allen-Zhu}}{{}}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.5.1}Across-Layer Training Dynamics}{5}{subsubsection.3.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.5.2}Cross-Token Mixing Is the Essential Ingredient}{5}{subsubsection.3.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Discussion}{5}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{On Canon.}{5}{section*.15}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Methodological lesson.}{5}{section*.16}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Limitations and future work.}{5}{section*.17}\protected@file@percent }
+\bibcite{allen-zhu2023physics1}{{2}{2023{a}}{{Allen-Zhu and Li}}{{}}}
+\bibcite{allen-zhu2023physics32}{{3}{2023{b}}{{Allen-Zhu and Li}}{{}}}
+\bibcite{allen-zhu2024physics31}{{4}{2024}{{Allen-Zhu and Li}}{{}}}
+\bibcite{allen-zhu2025physics33}{{5}{2025}{{Allen-Zhu and Li}}{{}}}
+\bibcite{deepseek2024v2}{{6}{2024}{{DeepSeek-AI}}{{}}}
+\bibcite{fedus2022switch}{{7}{2022}{{Fedus et~al.}}{{Fedus, Zoph, and Shazeer}}}
+\bibcite{kazemnejad2023nope}{{8}{2023}{{Kazemnejad et~al.}}{{Kazemnejad, Padhi, Ramamurthy, Das, and Reddy}}}
+\bibcite{power2022grokking}{{9}{2022}{{Power et~al.}}{{Power, Burda, Edwards, Babuschkin, and Misra}}}
+\bibcite{press2022alibi}{{10}{2022}{{Press et~al.}}{{Press, Smith, and Lewis}}}
+\bibcite{shazeer2020glu}{{11}{2020}{{Shazeer}}{{}}}
+\bibcite{shazeer2017moe}{{12}{2017}{{Shazeer et~al.}}{{Shazeer, Mirhoseini, Maziarz, Davis, Le, Hinton, and Dean}}}
+\bibcite{su2021roformer}{{13}{2024}{{Su et~al.}}{{Su, Lu, Pan, Murtadha, Wen, and Liu}}}
+\bibcite{yang2023gla}{{14}{2023}{{Yang et~al.}}{{Yang, Wang, Shen, Panda, and Kim}}}
+\bibcite{ye2024physics21}{{15}{2024}{{Ye et~al.}}{{Ye, Xu, Li, and Allen-Zhu}}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces \textbf  {Canon insertion points.} A depthwise causal convolution can be placed at four positions within a transformer block: pre-attention (A), post-attention (B), pre-FFN (C), and post-FFN (D). \textsc  {Canon}\xspace  denotes the full A/B/C/D configuration; the baseline \textsc  {Llama}\xspace  removes all four.}}{7}{figure.caption.3}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{fig:canon_scheme}{{1}{7}{\textbf {Canon insertion points.} A depthwise causal convolution can be placed at four positions within a transformer block: pre-attention (A), post-attention (B), pre-FFN (C), and post-FFN (D). \Canon denotes the full A/B/C/D configuration; the baseline \Llama removes all four}{figure.caption.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces \textbf  {Benchmark reliability varies by task.} Text modelling is stable across seeds; \textsc  {Depo}\xspace  and \textsc  {Brevo}\xspace  grok at a seed-dependent step, making single-run rankings unreliable. Seed-to-seed variance concentrates on \textsc  {Depo}\xspace  ; all graph-search tasks are stable.}}{8}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:reliability}{{2}{8}{\textbf {Benchmark reliability varies by task.} Text modelling is stable across seeds; \Depo and \Brevo grok at a seed-dependent step, making single-run rankings unreliable. Seed-to-seed variance concentrates on \Depo ; all graph-search tasks are stable}{figure.caption.6}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces \textbf  {\textsc  {Canon}\xspace  outperforms \textsc  {Llama}\xspace  at every scale when averaging over seeds.} The gap is largest for small models and narrows with scale. At 30M the gain is concentrated on \textsc  {Depo}\xspace  ; improvements on other tasks are minor or absent.}}{8}{figure.caption.7}\protected@file@percent }
+\newlabel{fig:scaling}{{3}{8}{\textbf {\Canon outperforms \Llama at every scale when averaging over seeds.} The gap is largest for small models and narrows with scale. At 30M the gain is concentrated on \Depo ; improvements on other tasks are minor or absent}{figure.caption.7}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces \textbf  {\textsc  {Canon}\xspace  substitutes for model depth (param-matched, $\sim $85M).} \textsc  {Llama}\xspace  improves with depth, acquiring multi-hop retrieval (\textsc  {Depo}\xspace  ) only at 14 layers; \textsc  {Canon}\xspace  reaches comparable performance several layers shallower. \textsc  {Canon}\xspace  at 10 layers matches a 14-layer \textsc  {Llama}\xspace  on \textsc  {Depo}\xspace  , and \textsc  {Canon}\xspace  at 12 layers is the strongest model overall.}}{9}{figure.caption.8}\protected@file@percent }
+\newlabel{fig:depth}{{4}{9}{\textbf {\Canon substitutes for model depth (param-matched, $\sim $85M).} \Llama improves with depth, acquiring multi-hop retrieval (\Depo ) only at 14 layers; \Canon reaches comparable performance several layers shallower. \Canon at 10 layers matches a 14-layer \Llama on \Depo , and \Canon at 12 layers is the strongest model overall}{figure.caption.8}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces \textbf  {\textsc  {Canon}\xspace  configuration ablations.} Positions A and C (pre-attention and pre-FFN) capture the full gain; B and D are droppable. All initialisation schemes outperform the \textsc  {Llama}\xspace  baseline, including zero initialisation; the benefit is structurally inherent to the convolution, not to the choice of starting weights.}}{9}{figure.caption.11}\protected@file@percent }
+\newlabel{fig:ablations}{{5}{9}{\textbf {\Canon configuration ablations.} Positions A and C (pre-attention and pre-FFN) capture the full gain; B and D are droppable. All initialisation schemes outperform the \Llama baseline, including zero initialisation; the benefit is structurally inherent to the convolution, not to the choice of starting weights}{figure.caption.11}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces \textbf  {Mechanism is reproducible where the score is not.} Deep/shallow gradient ratio over training, one line per seed. The \textsc  {Canon}\xspace  seeds (held low and tightly bundled) and the \textsc  {Llama}\xspace  seeds (drifting upward) form two non-overlapping bundles, even though the final \textsc  {Depo}\xspace  score varies seed to seed within each architecture.}}{10}{figure.caption.12}\protected@file@percent }
+\newlabel{fig:mech_seeds}{{6}{10}{\textbf {Mechanism is reproducible where the score is not.} Deep/shallow gradient ratio over training, one line per seed. The \Canon seeds (held low and tightly bundled) and the \Llama seeds (drifting upward) form two non-overlapping bundles, even though the final \Depo score varies seed to seed within each architecture}{figure.caption.12}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces \textbf  {\textsc  {Canon}\xspace  's across-layer reorganization signature.} \textsc  {Canon}\xspace  suppresses the deep-layer gradient dominance that \textsc  {Llama}\xspace  develops, amplifies deep-layer representations, and distributes the per-layer gradient profile more evenly, changes that resemble the effect of scaling the model up.}}{10}{figure.caption.13}\protected@file@percent }
+\newlabel{fig:dynamics}{{7}{10}{\textbf {\Canon 's across-layer reorganization signature.} \Canon suppresses the deep-layer gradient dominance that \Llama develops, amplifies deep-layer representations, and distributes the per-layer gradient profile more evenly, changes that resemble the effect of scaling the model up}{figure.caption.13}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces \textbf  {Cross-token mixing is the necessary ingredient.} $k{=}1$ (no mixing) performs worse than the baseline; loss improves monotonically with kernel size. The learned weights favour farther-back tokens from initialisation, with the strongest mixing in early layers.}}{11}{figure.caption.14}\protected@file@percent }
+\newlabel{fig:flow}{{8}{11}{\textbf {Cross-token mixing is the necessary ingredient.} $k{=}1$ (no mixing) performs worse than the baseline; loss improves monotonically with kernel size. The learned weights favour farther-back tokens from initialisation, with the strongest mixing in early layers}{figure.caption.14}{}}
+\gdef \@abspage@last{11}

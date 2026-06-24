@@ -9,4 +9,3 @@ physicslm4.egg-info/*
 plots/*
 **/node_modules/*
 **/venv/*
-reports/*

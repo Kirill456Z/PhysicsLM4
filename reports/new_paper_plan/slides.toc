@@ -1,0 +1,11 @@
+\beamer@sectionintoc {1}{Motivation}{2}{0}{1}
+\beamer@sectionintoc {2}{Synthetic Data as a Solution}{3}{0}{2}
+\beamer@sectionintoc {3}{Task Descriptions}{4}{0}{3}
+\beamer@sectionintoc {4}{Canon Layers}{9}{0}{4}
+\beamer@sectionintoc {5}{Setup}{12}{0}{5}
+\beamer@sectionintoc {6}{Part 1: Can the Measurement Be Trusted?}{13}{0}{6}
+\beamer@sectionintoc {7}{Part 1: The Verdict, Done Right}{15}{0}{7}
+\beamer@sectionintoc {8}{Part 2: Mechanism --- Studied on Text}{17}{0}{8}
+\beamer@sectionintoc {9}{Recommended Configuration}{22}{0}{9}
+\beamer@sectionintoc {10}{Findings}{26}{0}{10}
+\beamer@sectionintoc {11}{Discussion}{27}{0}{11}

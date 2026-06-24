@@ -16,7 +16,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Union, Tuple
+from typing import List, Optional, Union, Tuple
 
 import torch
 from torch import nn
@@ -49,6 +49,11 @@ class BaseTransformerArgs:
     canon_activation: bool = False
     canon_kernel: int = 4
     canon_residual: bool = True
+    canon_init: str = "zeros"  # "zeros" for all-zeros init, "default" for standard Conv1d (kaiming_uniform_), "const_var" for 1/sqrt(kernel_size)
+    train_canon_weights: bool = True  # If False, canon weights are frozen (kept constant as initialized)
+    canon_gamma: bool = False  # If True, add a trainable per-dimension scaling vector (gamma) on canon outputs
+    use_fast_conv1d: bool = False
+    canon_layers: Optional[List[int]] = None  # If provided, canon only applied to transformer blocks at these indices; if None, applied to all layers
 
     qk_norm: bool = False
 
@@ -64,6 +69,13 @@ class BaseTransformerArgs:
     multiple_of: int = 256
 
     norm_eps: float = 1e-5
+
+    # Layer normalization placement: "pre" (x + Func(LN(x))), "post" (x + LN(Func(x))),
+    # "peri" (x + LN(Func(LN(x)))) with optional initial embedding norm, or "none" (no norms)
+    layer_norm_type: str = "pre"
+
+    # Scale MHA and MLP outputs by 1/sqrt(layer_idx) before adding to residual stream
+    residuals_scaling: bool = False
 
     rope_theta: float = 10000.0
     rope_dim: Optional[int] = None  # If None, use head_dim or dim // n_heads
@@ -348,6 +360,7 @@ class Attention(nn.Module):
         rope_theta: float,
         rope_dim: Optional[int],
         args: BaseTransformerArgs,
+        layer_idx: int = 0,
     ):
         super().__init__()
 
@@ -389,7 +402,8 @@ class Attention(nn.Module):
             self.q_norm = None
             self.k_norm = None
 
-        if 'B' in args.canon_set:
+        has_canon = (args.canon_layers is None) or (layer_idx in args.canon_layers)
+        if has_canon and 'B' in args.canon_set:
             self.canonB = create_canon((n_heads+2*n_kv_heads) * head_dim, args)
         else:
             self.canonB = None
@@ -514,6 +528,7 @@ class FeedForward(nn.Module):
         ffn_dim_multiplier: Optional[float],
         mp_size: int = 1,
         args: Optional[BaseTransformerArgs] = None,
+        layer_idx: int = 0,
     ):
         super().__init__()
 
@@ -544,7 +559,8 @@ class FeedForward(nn.Module):
             dim,
             bias=False,
         )
-        if 'D' in args.canon_set:
+        has_canon = (args.canon_layers is None) or (layer_idx in args.canon_layers)
+        if has_canon and 'D' in args.canon_set:
             self.canonD = create_canon(hidden_dim*2, args)
         else:
             self.canonD = None
@@ -582,7 +598,7 @@ class FeedForward(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, args: BaseTransformerArgs):
+    def __init__(self, args: BaseTransformerArgs, layer_idx: int = 0):
         super().__init__()
 
         assert (args.head_dim is not None) or (
@@ -595,11 +611,12 @@ class TransformerBlock(nn.Module):
         assert args.n_heads % self.n_kv_heads == 0
         assert args.dim % args.n_heads == 0
 
-        if 'A' in args.canon_set:
+        has_canon = (args.canon_layers is None) or (layer_idx in args.canon_layers)
+        if has_canon and 'A' in args.canon_set:
             self.canonA = create_canon(args.dim, args)
         else:
             self.canonA = None
-        if 'C' in args.canon_set:
+        if has_canon and 'C' in args.canon_set:
             self.canonC = create_canon(args.dim, args)
         else:
             self.canonC = None
@@ -611,6 +628,7 @@ class TransformerBlock(nn.Module):
             rope_theta=args.rope_theta,
             rope_dim=args.rope_dim,
             args=args,
+            layer_idx=layer_idx,
         )
         self.feed_forward = FeedForward(
             dim=args.dim,
@@ -618,9 +636,23 @@ class TransformerBlock(nn.Module):
             multiple_of=args.multiple_of,
             ffn_dim_multiplier=args.ffn_dim_multiplier,
             args=args,
+            layer_idx=layer_idx,
         )
-        self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
-        self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
+        assert args.layer_norm_type in ("pre", "post", "peri", "none"), (
+            f"layer_norm_type must be 'pre', 'post', 'peri', or 'none', got {args.layer_norm_type!r}"
+        )
+        self.layer_norm_type = args.layer_norm_type
+        if args.layer_norm_type != "none":
+            self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
+            self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
+        else:
+            self.attention_norm = None
+            self.ffn_norm = None
+
+        self.residuals_scaling = args.residuals_scaling
+        if args.residuals_scaling:
+            beta = 1.0 / (layer_idx + 1) ** 0.5
+            self.register_buffer("beta_layer", torch.tensor(beta, dtype=torch.float32))
 
     def forward(
         self,
@@ -630,33 +662,98 @@ class TransformerBlock(nn.Module):
         mask: Optional[Union[BlockMask, AttentionBias, str]] = None,
         attn_impl: str = "sdpa",
     ) -> torch.Tensor:
-        kv_cache=getattr(self, "kv_cache", None)
-        xx = self.attention_norm(x)
-        if self.canonA is not None:
-            #print("canonA: ",xx.shape)
-            xx = apply_canon('canonA', self.canonA, xx, kv_cache, None)  # doesn't allow any attention_mask
-
-        h = x + self.attention(
-            xx,
-            freq_cis,
-            tok_idx=tok_idx,
-            mask=mask,
-            attn_impl=attn_impl,
-            kv_cache=kv_cache,
-        )
-        hh = self.ffn_norm(h)
-        if self.canonC is not None:
-            #print("canonC: ",xx.shape)
-            hh = apply_canon('canonC', self.canonC, hh, kv_cache, None)
-        out = h + self.feed_forward(hh, kv_cache)
+        kv_cache = getattr(self, "kv_cache", None)
+        beta = self.beta_layer.to(x.dtype) if self.residuals_scaling else x.new_tensor(1.0)
+        if self.layer_norm_type == "pre":
+            # Pre-LN: output = x + β*Func(LN(x))
+            xx = self.attention_norm(x)
+            if self.canonA is not None:
+                xx = apply_canon('canonA', self.canonA, xx, kv_cache, None)
+            attn_out = self.attention(
+                xx,
+                freq_cis,
+                tok_idx=tok_idx,
+                mask=mask,
+                attn_impl=attn_impl,
+                kv_cache=kv_cache,
+            )
+            h = x + beta * attn_out
+            hh = self.ffn_norm(h)
+            if self.canonC is not None:
+                hh = apply_canon('canonC', self.canonC, hh, kv_cache, None)
+            ffn_out = self.feed_forward(hh, kv_cache)
+            out = h + beta * ffn_out
+        elif self.layer_norm_type == "post":
+            # Post-LN: output = x + β*LN(Func(x))
+            xx = x
+            if self.canonA is not None:
+                xx = apply_canon('canonA', self.canonA, xx, kv_cache, None)
+            attn_out = self.attention_norm(
+                self.attention(
+                    xx,
+                    freq_cis,
+                    tok_idx=tok_idx,
+                    mask=mask,
+                    attn_impl=attn_impl,
+                    kv_cache=kv_cache,
+                )
+            )
+            h = x + beta * attn_out
+            hh = h
+            if self.canonC is not None:
+                hh = apply_canon('canonC', self.canonC, hh, kv_cache, None)
+            ffn_out = self.ffn_norm(self.feed_forward(hh, kv_cache))
+            out = h + beta * ffn_out
+        elif self.layer_norm_type == "none":
+            # No norm: output = x + β*Func(x)
+            xx = x
+            if self.canonA is not None:
+                xx = apply_canon('canonA', self.canonA, xx, kv_cache, None)
+            attn_out = self.attention(
+                xx,
+                freq_cis,
+                tok_idx=tok_idx,
+                mask=mask,
+                attn_impl=attn_impl,
+                kv_cache=kv_cache,
+            )
+            h = x + beta * attn_out
+            hh = h
+            if self.canonC is not None:
+                hh = apply_canon('canonC', self.canonC, hh, kv_cache, None)
+            ffn_out = self.feed_forward(hh, kv_cache)
+            out = h + beta * ffn_out
+        else:
+            # Peri-LN: output = x + β*LN(Func(LN(x))); normalizes before and after module
+            xx = self.attention_norm(x)
+            if self.canonA is not None:
+                xx = apply_canon('canonA', self.canonA, xx, kv_cache, None)
+            attn_out = self.attention_norm(
+                self.attention(
+                    xx,
+                    freq_cis,
+                    tok_idx=tok_idx,
+                    mask=mask,
+                    attn_impl=attn_impl,
+                    kv_cache=kv_cache,
+                )
+            )
+            h = x + beta * attn_out
+            hh = self.ffn_norm(h)
+            if self.canonC is not None:
+                hh = apply_canon('canonC', self.canonC, hh, kv_cache, None)
+            ffn_out = self.ffn_norm(self.feed_forward(hh, kv_cache))
+            out = h + beta * ffn_out
         return out
 
     def init_weights(self, init_std=None, factor=1.0):
         self.attention.reset_parameters(init_std, factor)
-        self.attention_norm.reset_parameters()
+        if self.attention_norm is not None:
+            self.attention_norm.reset_parameters()
 
         self.feed_forward.reset_parameters(init_std, factor)
-        self.ffn_norm.reset_parameters()
+        if self.ffn_norm is not None:
+            self.ffn_norm.reset_parameters()
         if self.canonA is not None:
             self.canonA.reset_parameters()
         if self.canonC is not None:
@@ -682,8 +779,8 @@ class BaseTransformer(nn.Module):
         )
 
         self.layers = nn.ModuleList()
-        for _ in range(args.n_layers):
-            self.layers.append(TransformerBlock(args))
+        for i in range(args.n_layers):
+            self.layers.append(TransformerBlock(args, layer_idx=i))
 
     def forward(
         self,

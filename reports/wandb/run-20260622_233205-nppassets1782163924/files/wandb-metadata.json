@@ -1,0 +1,17 @@
+{
+  "os": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "python": "CPython 3.13.5",
+  "startedAt": "2026-06-22T21:32:05.411002Z",
+  "program": "/Users/kirill.zemlianskii/WorkspacePersonal/PhysicsLM4/reports/new_paper_plan.py",
+  "codePath": "reports/new_paper_plan.py",
+  "codePathLocal": "new_paper_plan.py",
+  "git": {
+    "remote": "git@github-kirill456z:Kirill456Z/PhysicsLM4.git",
+    "commit": "ef5aeb3ef71e4e8d067b6b41776940e145c09605"
+  },
+  "email": "Kirill456Z@yandex.ru",
+  "root": "/Users/kirill.zemlianskii/WorkspacePersonal/PhysicsLM4/reports",
+  "host": "NXT-VV3TH4GJJG",
+  "executable": "/Users/kirill.zemlianskii/WorkspacePersonal/PhysicsLM4/.venv/bin/python3",
+  "writerId": "l8vym5nt1m5nrjocmhoq03ht0vh0b8zv"
+}

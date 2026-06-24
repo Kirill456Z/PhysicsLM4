@@ -1,0 +1,148 @@
+# Mixed synthetic task training configuration
+# All four tasks (Depo, Brevo, ConComp, ShortestPath) share a unified vocabulary:
+#   - base_vocab_size=4 (tokens 1..8 for node words)
+#   - min/max_token_length=4/6 (each node name = 4-6 tokens)
+#   - Task-type token replaces BOS (first token of every sequence)
+#   - vocab_size=512 covers all tokens with ample headroom
+#
+# See data_synthetic_pretrain/shared_vocab.py for the full token layout.
+
+name: "mix_{semver_tag}"
+dump_dir: /scratch/zemlians/physics4lm/mix_checkpoints
+
+steps: 100000
+probe_freq: null
+seed: 48
+
+data_mode: "depo:0.25|brevo:0.25|concomp:0.25|sp:0.25"
+
+grad_acc_steps: 1
+
+depo_generation_args:
+    max_nodes: 75
+    max_hops: 4
+    num_queries: 8
+    base_vocab_size: 25
+    min_token_length: 1
+    max_token_length: 4
+
+brevo_generation_args:
+    max_nodes: 75
+    base_vocab_size: 25
+    min_token_length: 1
+    max_token_length: 4
+
+concomp_generation_args:
+    max_vertices: 75
+    min_vertices: 3
+    edge_p: 0.2
+    queries_count: 1
+    base_vocab_size: 25
+    min_token_length: 1
+    max_token_length: 4
+
+sp_generation_args:
+    max_nodes: 30
+    min_nodes: 3
+    edge_p: 0.2
+    base_vocab_size: 25
+    min_token_length: 1
+    max_token_length: 4
+
+# Optimizer settings
+optim:
+    lr: 3e-4
+    warmup: 1000
+    lr_min_ratio: 0.1
+    weight_decay: 0.03
+    epsilon: 1.0e-06
+    beta1: 0.9
+    beta2: 0.98
+
+# Distributed training settings
+distributed:
+    fsdp_type: full_shard
+    compile: true
+    model_dtype: bf16
+    matmul_allow_tf32: false
+    selective_activation_checkpointing: false
+    tp_size: 1
+
+# Model architecture (GPT-2 Small: 117M params)
+model:
+    seed: 50
+    dim: 512
+    n_layers: 8
+    n_heads: 8
+    head_dim: 64
+    # Unified vocab layout (B=4):
+    #   0: PAD  1-4: base tokens  5-8: EOW markers
+    #   9: TASK_DEPO  10: TASK_BREVO  11: TASK_CONCOMP  12: EOS
+    #   13-14: Brevo specials  15-16: ConComp specials  17: DEPO_SEP
+    #   201-216: Depo hop tokens (200+k, k=1..16)
+    #   512 gives ample headroom for all current and future tokens.
+    vocab_size: 512
+
+    rope_theta: 10000.0
+    canon_set: ""
+    use_fast_conv1d:  true
+    canon_kernel: 4
+    canon_init: default
+    train_canon_weights: true
+    canon_gamma: false
+    canon_residual: true
+    z_loss: false
+
+# Data loading settings
+data:
+    root_dir: /scratch/zemlians/physics4lm
+    sources:
+        depo: 1.0
+
+    batch_size: 256
+    prefetch_size: 512
+    seq_len: 768
+    n_views: 2
+    enable_packing: false
+
+    load_async: true
+    seed: 43
+
+    tokenizer:
+        name: mock
+
+    add_bos: false
+    add_eos: false
+
+# Profiling settings
+profiling:
+    run: false
+
+# Checkpoint settings
+checkpoint:
+    dump:
+        every: 10000
+        keep: 2
+    eval:
+        every: 1000
+        keep: 2
+
+# Logging settings
+logging:
+    freq: 10
+    acc_freq: 10
+    diagnostics_easy_freq: 50
+    diagnostics_medium_freq: 500
+    diagnostics_heavy_freq: 0
+    wandb:
+        entity: kirill456z
+        project: physics4llm
+        name: "mix_{semver_tag}"
+
+eval:
+  eval_dir: "scratch/zemlians/physics4lm/mixed_eval"
+  max_examples: 100           # examples used for inference per bucket
+  max_answer_size: 4          # buckets 0..4 only (dense graph rarely has smaller sets)
+  num_examples_generate: 200  # examples to generate per bucket
+  temperature: 0.0
+  max_gen_len: 64

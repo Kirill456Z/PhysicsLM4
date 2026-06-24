@@ -13,3 +13,5 @@ scipy
 pynvml
 datatrove
 orjson
+# Optional: required for fuse_cross_entropy (memory-efficient loss with large vocab)
+flash-linear-attention

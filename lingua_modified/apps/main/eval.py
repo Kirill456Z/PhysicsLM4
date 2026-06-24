@@ -11,6 +11,7 @@
 # These modifications are licensed under the Apache 2.0 license, as stated in the root LICENSE file.
 #
 
+from data_synthetic_pretrain.tasks.base_task import BaseSynteticTaskGenerator
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -18,12 +19,14 @@ import json
 import logging
 import os
 from pathlib import Path
-from lm_eval.api.instance import Instance
-from lm_eval.api.model import LM
-from typing import Any, List, Optional, Tuple, Union
-from lm_eval import simple_evaluate
+from dataclasses import is_dataclass
+#from lm_eval.api.instance import Instance
+#from lm_eval.api.model import LM
+from typing import Any, List, Optional, Union
+#from lm_eval import simple_evaluate
 from omegaconf import OmegaConf
 import torch
+import wandb
 from apps.main.generate import (
     PackedCausalTransformerGenerator,
     PackedCausalTransformerGeneratorArgs,
@@ -115,64 +118,148 @@ class MockAccelerator:
 
 
 # Light wrapper around generator for lm-eval harness
-class EvalHarnessLM(LM):
-    def __init__(self, generator):
-        super().__init__()
-        self.generator = generator
-        self.accelerator = MockAccelerator()
-        self._rank = get_global_rank()
-        self._world_size = get_world_size()
-        self.device = generator.device
+#class EvalHarnessLM(LM):
+    #def __init__(self, generator):
+        #super().__init__()
+        #self.generator = generator
+        #self.accelerator = MockAccelerator()
+        #self._rank = get_global_rank()
+        #self._world_size = get_world_size()
+        #self.device = generator.device
 
-    def generate_until(self, requests: List[Instance]) -> List[str]:
-        prompts, gen_args = zip(*[req.args for req in requests])
-        assert all_dicts_same(gen_args), "Doesn't support different gen args for now"
-        gen_args = gen_args[0]
-        temperature = gen_args.get("temperature", 0.0)
-        top_p = gen_args.get("top_p", None)
-        top_k = gen_args.get("top_k", None)
-        until = gen_args.get("until", [])
+    #def generate_until(self, requests: List[Instance]) -> List[str]:
+        #prompts, gen_args = zip(*[req.args for req in requests])
+        #assert all_dicts_same(gen_args), "Doesn't support different gen args for now"
+        #gen_args = gen_args[0]
+        #temperature = gen_args.get("temperature", 0.0)
+        #top_p = gen_args.get("top_p", None)
+        #top_k = gen_args.get("top_k", None)
+        #until = gen_args.get("until", [])
 
-        self.generator.temperature = temperature
-        self.generator.top_p = top_p
-        self.generator.top_k = top_k
-        self.generator.until = until
-        generations, _, _ = self.generator.generate(prompts)
-        filtered_gen = []
-        for g in generations:
-            for e in until:
-                g = g.replace(e, "")
-            filtered_gen.append(g)
-        return filtered_gen
+        #self.generator.temperature = temperature
+        #self.generator.top_p = top_p
+        #self.generator.top_k = top_k
+        #self.generator.until = until
+        #generations, _, _ = self.generator.generate(prompts)
+        #filtered_gen = []
+        #for g in generations:
+            #for e in until:
+                #g = g.replace(e, "")
+            #filtered_gen.append(g)
+        #return filtered_gen
 
-    def loglikelihood(self, requests: List[Instance]) -> List[Tuple[float, bool]]:
-        prompts, continuations = zip(*[req.args for req in requests])
-        inputs = [req.args[0] + req.args[1] for req in requests]
-        max_gen_len = self.generator.max_gen_len
-        # We temporarily lower max gen len
-        self.generator.max_gen_len = 1
-        _, lls, greedy = self.generator.generate(inputs)
-        results = []
-        for p, ll, gr in zip(prompts, lls, greedy):
-            p_len = len(self.generator.tokenizer.encode(p, add_bos=False, add_eos=False))
-            results.append((ll[p_len:].sum().item(), gr[p_len:].all().item()))
+    #def loglikelihood(self, requests: List[Instance]) -> List[Tuple[float, bool]]:
+        #prompts, continuations = zip(*[req.args for req in requests])
+        #inputs = [req.args[0] + req.args[1] for req in requests]
+        #max_gen_len = self.generator.max_gen_len
+        ## We temporarily lower max gen len
+        #self.generator.max_gen_len = 1
+        #_, lls, greedy = self.generator.generate(inputs)
+        #results = []
+        #for p, ll, gr in zip(prompts, lls, greedy):
+            #p_len = len(self.generator.tokenizer.encode(p, add_bos=False, add_eos=False))
+            #results.append((ll[p_len:].sum().item(), gr[p_len:].all().item()))
 
-        self.generator.max_gen_len = max_gen_len
-        return results
+        #self.generator.max_gen_len = max_gen_len
+        #return results
 
-    def loglikelihood_rolling(self, requests: List[Instance]) -> List[float]:
-        prompts = [req.args[0] for req in requests]
-        max_gen_len = self.generator.max_gen_len
-        # We temporarily lower max gen len
-        self.generator.max_gen_len = 1
-        _, lls, _ = self.generator.generate(prompts)
-        results = []
-        for ll in lls:
-            results.append((ll.sum().item(),))
-        self.generator.max_gen_len = max_gen_len
+    #def loglikelihood_rolling(self, requests: List[Instance]) -> List[float]:
+        #prompts = [req.args[0] for req in requests]
+        #max_gen_len = self.generator.max_gen_len
+        ## We temporarily lower max gen len
+        #self.generator.max_gen_len = 1
+        #_, lls, _ = self.generator.generate(prompts)
+        #results = []
+        #for ll in lls:
+            #results.append((ll.sum().item(),))
+        #self.generator.max_gen_len = max_gen_len
 
-        return results
+        #return results
     
+
+def eval_on_synthetic_tasks(generator, task_generators: list[BaseSynteticTaskGenerator]):
+    all_metrics = {}
+    max_gen_len = generator.max_gen_len
+    for task_generator in task_generators:
+        generator.max_gen_len = task_generator.max_generation_length()
+        eval_set = task_generator.get_eval_set()
+        generations, _, _ = generator.generate([eval_sample.context for eval_sample in eval_set])
+        logger.info(f"Generated {len(generations)} generations for {task_generator.name}")
+        logger.info(f"Generations: {generations}")
+        metrics = task_generator.batch_evaluate(generations)
+        all_metrics.update(metrics)
+    generator.max_gen_len = max_gen_len
+    return all_metrics
+
+
+def _wandb_init_kwargs(wandb_cfg: Optional[Any]) -> dict[str, Any]:
+    if wandb_cfg is None:
+        return {}
+    if is_dataclass(wandb_cfg):
+        return asdict(wandb_cfg)
+    if isinstance(wandb_cfg, dict):
+        return dict(wandb_cfg)
+    return {}
+
+
+def _flatten_metrics(metrics: dict[str, Any], prefix: str) -> dict[str, Any]:
+    flat_metrics: dict[str, Any] = {}
+    for key, value in metrics.items():
+        metric_name = f"{prefix}{key}"
+        if isinstance(value, dict):
+            flat_metrics.update(_flatten_metrics(value, prefix=f"{metric_name}/"))
+        else:
+            flat_metrics[metric_name] = value
+    return flat_metrics
+
+
+def eval_on_model(
+    model: Any,
+    tokenizer: Any,
+    cfg: EvalArgs,
+    task_generators: list[BaseSynteticTaskGenerator] | None = None,
+):
+    """Eval using the already-loaded in-memory model, skipping checkpoint consolidation and disk reload."""
+    # If the training model is torch.compile-wrapped, use the original (FSDP) module for eval.
+    # torch.compile caches graphs by (signature, shape); eval uses different shapes and keyword
+    # args than training, which triggers recompilation on every call — the main source of slowness.
+    # _orig_mod is the FSDP-wrapped model, so distributed hooks still fire via model().
+    eval_model = getattr(model, '_orig_mod', model)
+    eval_model.eval()
+    generator = PackedCausalTransformerGenerator(cfg.generator, eval_model, tokenizer)
+
+    val_results = None
+    if task_generators is not None:
+        logger.info("Starting in-memory synthetic eval")
+        val_results = eval_on_synthetic_tasks(generator, task_generators)
+        logger.info(f"All evaluation results: {val_results}")
+        if get_global_rank() == 0 and val_results is not None and wandb.run is not None:
+            synthetic_metrics = _flatten_metrics(val_results, prefix="evals/synthetic/")
+            if synthetic_metrics:
+                if cfg.global_step is not None:
+                    wandb.log(synthetic_metrics, step=cfg.global_step)
+                else:
+                    wandb.log(synthetic_metrics)
+
+    del generator
+    # clear_cache() attached kv_cache onto TransformerBlock modules during generation.
+    # Those attributes must be removed before training resumes: torch.compile guards on
+    # module structure, so their presence triggers retracing, and the training forward
+    # passes tok_idx=None which causes kv_cache.update(xk, xv, None) to crash.
+    for module in eval_model.modules():
+        if hasattr(module, 'kv_cache'):
+            del module.kv_cache
+    eval_model.train()
+
+    if cfg.metric_log_dir and get_global_rank() == 0 and val_results is not None:
+        val_log_path = Path(cfg.metric_log_dir) / "metrics.validation.jsonl"
+        timestamp: dict[str, Any] = {"created_at": datetime.utcnow().isoformat()}
+        if cfg.global_step is not None:
+            timestamp["global_step"] = cfg.global_step
+        print(json.dumps(timestamp | val_results), file=open(val_log_path, mode="a"), flush=True)
+
+    return val_results
+
 
 def eval_on_val(generator, val_args: ValidationArgs, train_cfg):
     srcs = {}
@@ -227,7 +314,7 @@ def eval_on_val(generator, val_args: ValidationArgs, train_cfg):
 
     return all_val_metrics
 
-def launch_eval(cfg: EvalArgs):
+def launch_eval(cfg: EvalArgs, task_generators: list[BaseSynteticTaskGenerator] | None = None):
     if not torch.distributed.is_initialized():
         setup_torch_distributed(DistributedArgs())
     if (
@@ -243,6 +330,12 @@ def launch_eval(cfg: EvalArgs):
 
     Path(cfg.dump_dir).mkdir(parents=True, exist_ok=True)
     dump_config(cfg, Path(cfg.dump_dir) / "config.yaml", log_config=False)
+    started_wandb_run = False
+    if get_global_rank() == 0 and wandb.run is None:
+        init_kwargs = _wandb_init_kwargs(cfg.wandb)
+        if init_kwargs:
+            wandb.init(**init_kwargs)
+            started_wandb_run = True
 
     consolidate_path = str(consolidate_path)
     torch.distributed.barrier()
@@ -256,15 +349,26 @@ def launch_eval(cfg: EvalArgs):
     model.eval()
     generator = PackedCausalTransformerGenerator(cfg.generator, model, tokenizer)
 
-    wrap = EvalHarnessLM(generator)
-    results = simple_evaluate(wrap, **asdict(cfg.harness))
+    #wrap = EvalHarnessLM(generator)
+    #results = simple_evaluate(wrap, **asdict(cfg.harness))
     val_results =  None
-    if cfg.validation:
-        val_results = eval_on_val(generator, cfg.validation, train_cfg)
+    #if cfg.validation:
+        #val_results = eval_on_val(generator, cfg.validation, train_cfg)
+    if task_generators is not None:
+        logger.info("Starting synthetic eval")
+        val_results = eval_on_synthetic_tasks(generator, task_generators)
+        logger.info(f"All evaluation results: {val_results}")
+        if get_global_rank() == 0 and val_results is not None and wandb.run is not None:
+            synthetic_metrics = _flatten_metrics(val_results, prefix="evals/synthetic/")
+            if synthetic_metrics:
+                if cfg.global_step is not None:
+                    wandb.log(synthetic_metrics, step=cfg.global_step)
+                else:
+                    wandb.log(synthetic_metrics)
     if get_global_rank() == 0:
-        with open(Path(cfg.dump_dir) / "results.json", "w") as f:
-            f.write(json.dumps(results))
-        logger.info(f"All evaluation results: {results['results']}")
+        #with open(Path(cfg.dump_dir) / "results.json", "w") as f:
+            #f.write(json.dumps(results))
+        #logger.info(f"All evaluation results: {results['results']}")
         if val_results is not None:
             with open(Path(cfg.dump_dir) / "validation.json", "w") as f:
                 f.write(json.dumps(val_results))
@@ -278,11 +382,11 @@ def launch_eval(cfg: EvalArgs):
         }
         if cfg.global_step is not None:
             timestamp["global_step"] = cfg.global_step
-        print(
-            json.dumps(timestamp | results["results"]),
-            file=open(metric_log_path, mode="a"),
-            flush=True,
-        )
+        #print(
+            #json.dumps(timestamp | results["results"]),
+            #file=open(metric_log_path, mode="a"),
+            #flush=True,
+        #)
 
         val_log_path = Path(cfg.metric_log_dir) / "metrics.validation.jsonl"
         if val_results is not None:
@@ -293,6 +397,8 @@ def launch_eval(cfg: EvalArgs):
             )
     
     del generator
+    if started_wandb_run and get_global_rank() == 0:
+        wandb.finish()
 
 
 def main():

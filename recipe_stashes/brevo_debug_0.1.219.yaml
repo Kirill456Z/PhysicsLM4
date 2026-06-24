@@ -1,0 +1,117 @@
+# Brevo Dataset Training Configuration
+# Trains on the Brevo synthetic task (topological sort of DAGs).
+# Brevo1 variant: single-token nodes, N=110, compact vocab_size = N+4 = 114.
+
+name: "brevo_{semver_tag}"
+dump_dir: /scratch/zemlians/physics4lm/brevo_checkpoints
+
+steps: 100000
+probe_freq: null
+seed: 42
+
+data_mode: brevo
+
+grad_acc_steps: 1
+
+brevo_generation_args:
+  max_nodes: 110        # N: graph size sampled from [3, N]; use 30/40/50 for Brevo2
+  multi: false          # false = Brevo1 (single-token nodes); true = Brevo2 (multi-token)
+  train_on_all_tokens: false  # false = answer tokens only (faster, default from paper)
+
+# Optimizer settings
+optim:
+    lr: 3e-4
+    warmup: 1000
+    lr_min_ratio: 0.1
+    weight_decay: 0.03
+    epsilon: 1.0e-06
+    beta1: 0.9
+    beta2: 0.98
+
+# Distributed training settings
+distributed:
+    fsdp_type: full_shard
+    compile: true
+    model_dtype: bf16
+    matmul_allow_tf32: false
+    selective_activation_checkpointing: false
+    tp_size: 1
+
+# Model architecture
+# Compact vocab for Brevo1 (N=110, multi=false): vocab_size = N+4 = 114
+#   Token layout: 0=BOS, 1..110=nodes, 111=query, 112=ans, 113=EOS
+# Compact vocab for Brevo2 (multi=true): vocab_size = 12
+#   Token layout: 0=BOS, 1..4=base, 5..8=end-of-word, 9=query, 10=ans, 11=EOS
+model:
+    seed: 53
+    dim: 512
+    n_layers: 8
+    n_heads: 8
+    head_dim: 64
+    vocab_size: 114       # = max_nodes + 4 for Brevo1 (110 + 4); use 12 for Brevo2
+
+    rope_theta: 10000.0
+    canon_set: ""
+    use_fast_conv1d: true
+    canon_kernel: 4
+    canon_init: default
+    train_canon_weights: true
+    canon_gamma: false
+    canon_residual: true
+    z_loss: false
+
+# Data loading settings
+data:
+    root_dir: /scratch/zemlians/physics4lm
+    sources:
+        brevo: 1.0
+
+    batch_size: 256
+    prefetch_size: 512
+    seq_len: 1024         # Brevo1 with N=110 fits within 1024 tokens (per paper)
+    n_views: 2            # CRITICAL: must be 2 for masked-loss approach
+    enable_packing: false
+
+    load_async: true
+    seed: 42
+
+    tokenizer:
+        name: mock
+
+    add_bos: false
+    add_eos: false
+
+# Profiling settings
+profiling:
+    run: false
+
+# Checkpoint settings
+checkpoint:
+    dump:
+        every: 10000
+        keep: 2
+    eval:
+        every: 2000
+        keep: 2
+
+# Logging settings
+logging:
+    freq: 10
+    acc_freq: 10
+    diagnostics_easy_freq: 50
+    diagnostics_medium_freq: 500
+    diagnostics_heavy_freq: 0
+    wandb:
+        entity: kirill456z
+        project: physics4llm
+        name: "brevo_{semver_tag}"
+
+eval:
+    eval_dir: "/scratch/zemlians/physics4lm/brevo_eval"
+    max_examples: 200       # Examples per depth to evaluate
+    temperature: 0.0        # Greedy decoding
+    max_gen_len: 256        # Must be >= N (answer can be up to N tokens for full topo sort)
+    max_nodes: 110          # Must match brevo_generation_args.max_nodes
+    multi: false            # Must match brevo_generation_args.multi
+    max_depth: 8            # Evaluate depths 1..max_depth
+    num_examples_generate: 500  # Examples to generate per depth when building eval set

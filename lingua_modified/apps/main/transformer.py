@@ -19,7 +19,7 @@ import torch
 from torch import nn
 from torch.nn.attention.flex_attention import create_block_mask, BlockMask
 
-from torch.distributed._tensor import Replicate, Shard
+from torch.distributed._tensor import DTensor, Replicate, Shard
 from torch.distributed.tensor.parallel import (
     ColwiseParallel,
     RowwiseParallel,
@@ -55,17 +55,7 @@ def create_causal_mask(seqlen, attn_impl, sliding_window):
         )
 
 
-def attention_flops_per_token(n_layers, seq_len, dim, causal):
-    # Formula from https://github.com/Dao-AILab/flash-attention/blob/main/benchmarks/benchmark_flash_attention.py#L27-L30
-    return 3.5 * (4 * n_layers * seq_len * dim // (2 if causal else 1))
-
-
-def get_num_flop_per_token(
-    num_non_embed_params: int, n_layers: int, dim: int, seq_len: int
-) -> int:
-    return 6 * num_non_embed_params + attention_flops_per_token(
-        n_layers, seq_len, dim, True
-    )
+from apps.main.count_flops import attention_flops_per_token, get_num_flop_per_token  # noqa: F401
 
 
 def causal_mask(b, h, q_idx, kv_idx):
@@ -85,6 +75,29 @@ class LMTransformerArgs(BaseTransformerArgs):
 
     sliding_window: Optional[int] = None
 
+    # Fuse final linear with cross-entropy to avoid materializing full logits (saves ~6GB for 50k vocab).
+    # Requires flash-linear-attention (fla). z_loss is disabled when fused.
+    fuse_cross_entropy: bool = False
+
+
+def _to_plain_for_fla(t: torch.Tensor) -> torch.Tensor:
+    """Convert DTensor to plain tensor for FLA (which does not support DTensor)."""
+    if isinstance(t, DTensor):
+        return t.full_tensor()
+    return t
+
+
+def _get_fused_cross_entropy_loss():
+    """Lazy import to avoid requiring fla when fuse_cross_entropy is False."""
+    try:
+        from fla.modules import FusedLinearCrossEntropyLoss
+        return FusedLinearCrossEntropyLoss(ignore_index=-100)
+    except ImportError as e:
+        raise ImportError(
+            "fuse_cross_entropy=True requires flash-linear-attention. "
+            "Install with: pip install flash-linear-attention"
+        ) from e
+
 
 class LMTransformer(BaseTransformer):
     def __init__(self, args: LMTransformerArgs):
@@ -93,13 +106,17 @@ class LMTransformer(BaseTransformer):
         self.sliding_window = args.sliding_window
         self.attn_impl = args.attn_impl
         self.z_loss = args.z_loss
+        self.fuse_cross_entropy = args.fuse_cross_entropy
+        self.layer_norm_type = args.layer_norm_type
         print(f"Using attention implementation: {self.attn_impl}")
 
         assert args.vocab_size > 0
 
         self.tok_embeddings = torch.nn.Embedding(args.vocab_size, args.dim)
 
-        self.norm = RMSNorm(args.dim, eps=args.norm_eps)
+        self.norm = RMSNorm(args.dim, eps=args.norm_eps) if args.layer_norm_type != "none" else None
+        # Peri-LN: optional initial embedding normalization (y0 = Norm(x0))
+        self.emb_norm = RMSNorm(args.dim, eps=args.norm_eps) if args.layer_norm_type == "peri" else None
 
         if args.weight_tying:
             self.output = TiedLinear(self.tok_embeddings)
@@ -109,6 +126,15 @@ class LMTransformer(BaseTransformer):
                 args.vocab_size,
                 bias=False,
             )
+
+        self._fused_ce_loss = None
+        if args.fuse_cross_entropy:
+            if args.z_loss:
+                import logging
+                logging.getLogger().warning(
+                    "fuse_cross_entropy=True disables z_loss (FusedLinearCrossEntropyLoss does not support it)"
+                )
+            self._fused_ce_loss = _get_fused_cross_entropy_loss()
 
     def forward(
         self,
@@ -123,6 +149,8 @@ class LMTransformer(BaseTransformer):
             attn_impl = self.attn_impl
 
         h = self.tok_embeddings(token_values)
+        if self.emb_norm is not None:
+            h = self.emb_norm(h)
 
         mask = (
             mask
@@ -132,17 +160,38 @@ class LMTransformer(BaseTransformer):
 
         h = super().forward(h, tok_idx=tok_idx, mask=mask, attn_impl=attn_impl)
 
-        logits = self.output(self.norm(h))
+        h_norm = self.norm(h) if self.norm is not None else h
+        if target is not None and self._fused_ce_loss is not None:
+            # Fused path: avoids materializing logits (saves ~6GB for 50k vocab).
+            # Convert DTensor to plain: FLA's FusedLinearCrossEntropyLoss does not support DTensor.
+            weight = (
+                self.output.tied_module.weight
+                if self.weight_tying
+                else self.output.weight
+            )
+            h_norm_plain = _to_plain_for_fla(h_norm)
+            weight_plain = _to_plain_for_fla(weight)
+            # Align dtypes: full_tensor() can return float32 while activations are bf16
+            weight_plain = weight_plain.to(h_norm_plain.dtype)
+            # Same masking as nn.CrossEntropyLoss(ignore_index=-100): FLA kernel skips these
+            # positions in loss and gradient; mean reduction uses only non-ignored tokens.
+            target_plain = _to_plain_for_fla(target).to(torch.long)
+            return self._fused_ce_loss(h_norm_plain, target_plain, weight_plain, None)
+        logits = self.output(h_norm)
         if target is not None:
-            return cross_entropy(logits, target, z_loss=self.z_loss)
-        else:
-            return logits
+            return cross_entropy(
+                logits, target, z_loss=self.z_loss, ignore_index=-100
+            )
+        return logits
 
     def reset_parameters(self, init_std=None):
         # Either use fixed base std or sqrt model dim
         super().reset_parameters()
         init_std = init_std or (self.dim ** (-0.5))
-        self.norm.reset_parameters()
+        if self.norm is not None:
+            self.norm.reset_parameters()
+        if self.emb_norm is not None:
+            self.emb_norm.reset_parameters()
         nn.init.trunc_normal_(
             self.tok_embeddings.weight,
             mean=0.0,
@@ -171,6 +220,8 @@ def build_fsdp_grouping_plan(model_args: LMTransformerArgs):
 
     # Grouping and output seperately
     group_plan.append(("tok_embeddings", False))
+    if hasattr(model_args, "layer_norm_type") and model_args.layer_norm_type == "peri":
+        group_plan.append(("emb_norm", False))
 
     # Grouping by layers
     for i in range(model_args.n_layers):
@@ -194,7 +245,10 @@ def tp_parallelize(model, tp_mesh, model_args: LMTransformerArgs, distributed_ar
     main_plan["tok_embeddings"] = ColwiseParallel(
         input_layouts=Replicate(), output_layouts=Shard(1)
     )
-    main_plan["norm"] = SequenceParallel()
+    if model.norm is not None:
+        main_plan["norm"] = SequenceParallel()
+    if model.emb_norm is not None:
+        main_plan["emb_norm"] = SequenceParallel()
     main_plan["output"] = ColwiseParallel(
         input_layouts=Shard(1), output_layouts=Replicate()
     )
@@ -213,7 +267,8 @@ def tp_parallelize(model, tp_mesh, model_args: LMTransformerArgs, distributed_ar
             input_layouts=(Shard(1), None),
             desired_input_layouts=(Replicate(), None),
         )
-        layer_plan["attention_norm"] = SequenceParallel()
+        if layer.attention_norm is not None:
+            layer_plan["attention_norm"] = SequenceParallel()
         layer_plan["attention.wq"] = ColwiseParallel()
         layer_plan["attention.wk"] = ColwiseParallel()
         layer_plan["attention.wv"] = ColwiseParallel()
@@ -224,7 +279,8 @@ def tp_parallelize(model, tp_mesh, model_args: LMTransformerArgs, distributed_ar
             input_layouts=(Shard(1),),
             desired_input_layouts=(Replicate(),),
         )
-        layer_plan["ffn_norm"] = SequenceParallel()
+        if layer.ffn_norm is not None:
+            layer_plan["ffn_norm"] = SequenceParallel()
         layer_plan["feed_forward.w1"] = ColwiseParallel()
         layer_plan["feed_forward.w3"] = ColwiseParallel()
         layer_plan["feed_forward.w2"] = RowwiseParallel(output_layouts=Shard(1))

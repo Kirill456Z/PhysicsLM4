@@ -94,31 +94,28 @@ def pack_prompts(prompts: List[int]):
     return res, lengths
 
 
-def batch_prompts(prompts, max_elements, lengths=None):
+def pad_prompts(prompts: List[List[int]], pad_token: int = 0):
+    """Right-pad prompts to the max length in the batch."""
+    max_len = max(len(p) for p in prompts)
+    lengths = torch.tensor([len(p) for p in prompts], dtype=torch.long)
+    padded = torch.full((len(prompts), max_len), pad_token, dtype=torch.long)
+    for i, p in enumerate(prompts):
+        padded[i, :len(p)] = torch.tensor(p, dtype=torch.long)
+    return padded, lengths
+
+
+def batch_prompts(prompts, max_elements, lengths=None, eval_batch_size: int = 1):
+    if eval_batch_size > 1:
+        # Group into fixed-size batches; padding handles variable lengths.
+        batches = []
+        for i in range(0, len(prompts), eval_batch_size):
+            batches.append(prompts[i:i + eval_batch_size])
+        return batches
+
+    # Original: one prompt per batch (packing disabled for Canon layer compatibility).
     batches = []
-    current_batch = []
-    current_count = 0
-
-    for i in range(len(prompts)):
-        prt = prompts[i]
-        prompt_size = len(prt) if lengths is None else lengths[i]
-        #if current_count + prompt_size <= max_elements:   
-        if False:
-            # Zeyuan's edit note: this is disabled since my (simple) Canon layer implementation doesn't support packing two sequences together
-            #                     it requires special treatments on the attention mask, which needs more code changes
-            current_batch.append(prt)
-            current_count += prompt_size
-        else:
-            if current_batch:  # Add the current batch to batches
-                batches.append(current_batch)
-            # Start a new batch with the current prompt
-            current_batch = [prt]
-            current_count = prompt_size
-
-    # Add the last batch if it contains any prompts
-    if current_batch:
-        batches.append(current_batch)
-
+    for prt in prompts:
+        batches.append([prt])
     return batches
 
 
@@ -160,11 +157,19 @@ class KVCache(nn.Module):
         self.offset = 0
 
     def update(self, k_val, v_val, tok_idx):
-        # if self.print_option:
-        #     print("Update KVCache with tok_idx:", tok_idx)
-        # input_pos: [B], k_val: [B, S, H, D]
-        self.k_cache.index_copy_(1, self.offset + tok_idx, k_val)
-        self.v_cache.index_copy_(1, self.offset + tok_idx, v_val)
+        # k_val: (B, S, H, D),  tok_idx: (S,) same positions for all seqs
+        #                               OR (B,) per-sequence position (batched generation)
+        B, S, H, D = k_val.shape
+        positions = self.offset + tok_idx
+        if positions.numel() == S:
+            # Prefill or single-seq generation: same position for every batch element.
+            self.k_cache.index_copy_(1, positions, k_val)
+            self.v_cache.index_copy_(1, positions, v_val)
+        else:
+            # Batched generation: each sequence writes to its own current position.
+            idx = positions.view(B, 1, 1, 1).expand(B, 1, H, D)
+            self.k_cache.scatter_(1, idx, k_val)
+            self.v_cache.scatter_(1, idx, v_val)
         return self.k_cache, self.v_cache
 
 
@@ -182,6 +187,10 @@ class PackedCausalTransformerGeneratorArgs:
     show_progress: bool = False
     dtype: Optional[str] = "bf16"
     device: Optional[str] = "cuda"
+    # Batched generation: process this many sequences in parallel (padded, Canon-safe).
+    # 1 = original sequential behaviour.
+    eval_batch_size: int = 1
+    pad_token: int = 0
 
 
 class PackedCausalTransformerGenerator:
@@ -228,6 +237,8 @@ class PackedCausalTransformerGenerator:
 
         self.show_progress = cfg.show_progress
         self.dtype = dict(fp32=torch.float32, bf16=torch.bfloat16)[cfg.dtype]
+        self.eval_batch_size: int = cfg.eval_batch_size
+        self.pad_token: int = cfg.pad_token
 
         self.prefill_doc_id, self.prefill_tok_id = None, None
         self.padded_doc_id, self.padded_tok_id = None, None
@@ -235,14 +246,20 @@ class PackedCausalTransformerGenerator:
         self.padded_doc_start = None
         self.prefill_mask = None
 
-    def clear_cache(self, offset):
+    def clear_cache(self, offset, bsz: int = 1, seqlen: Optional[int] = None):
+        seqlen = seqlen or self.max_tokens
         for n, module in self.model.named_modules():
             # Zeyuan's edit note: the following is modified to support Canon layers
             if isinstance(module, TransformerBlock):
-                if not hasattr(module, "kv_cache"):
+                need_new = (
+                    not hasattr(module, "kv_cache")
+                    or module.kv_cache.k_cache.shape[0] != bsz
+                    or module.kv_cache.k_cache.shape[1] != seqlen
+                )
+                if need_new:
                     module.kv_cache = KVCache(
-                        1,
-                        self.max_tokens,
+                        bsz,
+                        seqlen,
                         module.n_kv_heads,
                         module.head_dim,
                         self.dtype,
@@ -252,7 +269,7 @@ class PackedCausalTransformerGenerator:
                 else:
                     module.kv_cache.reset()
                 if '.1' in n:
-                    module.kv_cache.print_option=True
+                    module.kv_cache.print_option = True
                 module.kv_cache.offset = offset
 
     @torch.compiler.disable
@@ -335,12 +352,49 @@ class PackedCausalTransformerGenerator:
         # the document id is just an arange
         self.current_doc_id = torch.arange(lengths.size(0), device=lengths.device)
 
+    # ---- Batched (padded) generation helpers ----
+
+    @torch.compiler.disable
+    def setup_prefilling_batched(self, lengths: torch.Tensor) -> None:
+        B = lengths.shape[0]
+        max_prompt_len = int(lengths.max().item())
+        self._batch_seqlen: int = max_prompt_len + self.max_gen_len
+        self.clear_cache(offset=0, bsz=B, seqlen=self._batch_seqlen)
+        self._prefill_tok_id_batched = torch.arange(
+            max_prompt_len, device=lengths.device, dtype=torch.long
+        )
+        # current_tok_id[b] = actual prompt length for sequence b (start of generation)
+        self.current_tok_id = lengths.clone()
+
+    def prefill_batched(self, tokens: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+        # tokens: (B, max_prompt_len) right-padded; standard causal SDPA handles the rest
+        self.setup_prefilling_batched(lengths)
+        return self.model(tokens, tok_idx=self._prefill_tok_id_batched, attn_impl="sdpa")
+
+    def generate_next_token_batched(self, current_token: torch.Tensor) -> torch.Tensor:
+        # current_token: (B, 1)
+        # Each sequence b attends to cache positions 0..current_tok_id[b].
+        caus_mask = (
+            torch.arange(self._batch_seqlen, device=self.current_tok_id.device).unsqueeze(0)
+            <= self.current_tok_id.unsqueeze(1)
+        )  # (B, seqlen)
+        out = self.model(
+            current_token,
+            tok_idx=self.current_tok_id,
+            mask=caus_mask,
+            attn_impl="sdpa",
+        )
+        self.current_tok_id = self.current_tok_id + 1
+        return out
+
+    # ---- Original packed generation methods ----
+
     # From here on some methods for generation
     def prefill(self, tokens: torch.Tensor, lengths: torch.Tensor):
         # Prefilling is done by taking multiple packed sequences and
         # doing block diagonal attention on them so they remain independent
         self.setup_prefilling(lengths=lengths)
-        prefill_out = self.model.forward(
+        prefill_out = self.model(
             tokens,
             tok_idx=self.prefill_tok_id,
             # Zeyuan's edit note: enforcing the use of SDPA attention, which employs a straightforward causal mask. Flex_attention also works, with minor differences in floating-point computations.
@@ -365,7 +419,7 @@ class PackedCausalTransformerGenerator:
         doc_mask = self.current_doc_id.unsqueeze(1) == self.padded_doc_id.unsqueeze(0)
         caus_mask = self.current_tok_id.unsqueeze(1) >= self.padded_tok_id.unsqueeze(0)
         mask = doc_mask & caus_mask
-        out = self.model.forward(
+        out = self.model(
             current_token,
             tok_idx=self.current_tok_id,  # n_seqs
             mask=mask,
@@ -376,11 +430,19 @@ class PackedCausalTransformerGenerator:
 
     @torch.inference_mode()
     def generate(self, prompts):
-        # Tokenize
-        # Zeyuan's edit note: I changed add_bos=True to add_bos=False, to make this consistent with the official lm_eval implementation (HFLM code)
-        prompts = [
-            self.tokenizer.encode(p, add_bos=False, add_eos=False) for p in prompts
-        ]
+        prompts_are_tokenized = all(
+            isinstance(p, (list, tuple, torch.Tensor)) and not isinstance(p, str)
+            for p in prompts
+        )
+        if prompts_are_tokenized:
+            prompts = [
+                p.tolist() if isinstance(p, torch.Tensor) else list(p) for p in prompts
+            ]
+        else:
+            # Zeyuan's edit note: I changed add_bos=True to add_bos=False, to make this consistent with the official lm_eval implementation (HFLM code)
+            prompts = [
+                self.tokenizer.encode(p, add_bos=False, add_eos=False) for p in prompts
+            ]
         # Truncate
         max_seqlen = (
             self.max_tokens
@@ -396,13 +458,76 @@ class PackedCausalTransformerGenerator:
         generation = []
         loglikelihood = []
         greedy = []
-        it = batch_prompts(prompts, self.max_tokens, lengths=padded_lengths)
+        it = batch_prompts(
+            prompts, self.max_tokens, lengths=padded_lengths,
+            eval_batch_size=self.eval_batch_size,
+        )
         if self.show_progress:
             it = tqdm(it)
+        eos_id = getattr(self.tokenizer, "eos_id", None)
         for batch in it:
             n_seqs = len(batch)
             generated_tokens = [[] for _ in range(n_seqs)]
             is_done = [False for _ in range(n_seqs)]
+
+            if self.eval_batch_size > 1:
+                # ---- Batched padded path ----
+                padded_batch, lengths = pad_prompts(batch, self.pad_token)
+                padded_batch = padded_batch.to(self.device)
+                lengths = lengths.to(self.device)
+                B = lengths.shape[0]
+
+                prompt_logits = self.prefill_batched(padded_batch, lengths)
+                # (B, max_prompt_len, vocab) → pick logit at last real token per sequence
+                start_logits = prompt_logits[
+                    torch.arange(B, device=lengths.device), lengths - 1
+                ]  # (B, vocab)
+                start_token = sample_tokens(
+                    start_logits, self.temperature, self.top_p, self.top_k
+                )  # (B,)
+                for seq_id, tok in enumerate(start_token.tolist()):
+                    generated_tokens[seq_id].append(tok)
+
+                current_token = start_token.unsqueeze(1)  # (B, 1)
+                for _ in range(1, self.max_gen_len):
+                    next_logits = self.generate_next_token_batched(current_token)
+                    next_token = sample_tokens(
+                        next_logits[:, -1, :], self.temperature, self.top_p, self.top_k
+                    )  # (B,)
+                    for seq_id, tok in enumerate(next_token.tolist()):
+                        if not is_done[seq_id]:
+                            generated_tokens[seq_id].append(tok)
+                            if self.until:
+                                current_end_str = self.tokenizer.decode(
+                                    generated_tokens[seq_id][-self.max_until_size:]
+                                ) or ""
+                                contains_end_string = any(
+                                    e in current_end_str for e in self.until
+                                )
+                            else:
+                                contains_end_string = False
+                            eos_reached = eos_id is not None and tok == eos_id
+                            is_done[seq_id] = contains_end_string or eos_reached
+                    if all(is_done):
+                        break
+                    current_token = next_token.unsqueeze(1)  # (B, 1)
+
+                if prompts_are_tokenized:
+                    generation.extend(generated_tokens)
+                else:
+                    generation.extend([self.tokenizer.decode(g) for g in generated_tokens])
+
+                for b in range(B):
+                    p = batch[b]
+                    real_len = int(lengths[b].item())
+                    logit = prompt_logits[b, :real_len]  # (real_len, vocab)
+                    x = logit[:-1]
+                    y = torch.tensor(p[1:real_len], device=x.device)
+                    loglikelihood.append(-F.cross_entropy(x, y, reduction="none").cpu())
+                    greedy.append((x.argmax(dim=-1) == y).cpu())
+                continue
+
+            # ---- Original single-sequence packed path ----
             packed_batch, lengths = pack_prompts(batch)
             packed_batch, lengths = packed_batch.cuda(), lengths.cuda()
             n_seqs = lengths.size(0)
@@ -429,21 +554,26 @@ class PackedCausalTransformerGenerator:
                 for seq_id, tok in enumerate(next_token.squeeze(0).tolist()):
                     if not is_done[seq_id]:
                         generated_tokens[seq_id].append(tok)
-                        current_end_str = self.tokenizer.decode(
-                            generated_tokens[seq_id][-self.max_until_size :]
-                        )
-                        contains_end_string = any(
-                            [e in current_end_str for e in self.until]
-                        )
-                        is_done[seq_id] = (
-                            contains_end_string or tok == self.tokenizer.eos_id
-                        )
+                        if self.until:
+                            current_end_str = self.tokenizer.decode(
+                                generated_tokens[seq_id][-self.max_until_size :]
+                            ) or ""
+                            contains_end_string = any(
+                                e in current_end_str for e in self.until
+                            )
+                        else:
+                            contains_end_string = False
+                        eos_reached = eos_id is not None and tok == eos_id
+                        is_done[seq_id] = contains_end_string or eos_reached
                 if all(is_done):
                     break
 
                 current_token = next_token
 
-            generation.extend([self.tokenizer.decode(g) for g in generated_tokens])
+            if prompts_are_tokenized:
+                generation.extend(generated_tokens)
+            else:
+                generation.extend([self.tokenizer.decode(g) for g in generated_tokens])
 
             for p, logit in zip(
                 batch, prompt_logits.squeeze(0).split(lengths.tolist())

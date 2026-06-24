@@ -38,7 +38,7 @@ def make_canon_layer(hidden_size: int,
             kernel_size: int,
             bias: bool = False,
             activation: Optional[str] = 'silu',
-            use_fast_conv1d: Optional[bool] = True,
+            use_fast_conv1d: Optional[bool] = False,
             device: Optional[torch.device] = None,
             dtype: Optional[torch.dtype] = None
         ) -> nn.Module:
@@ -190,6 +190,40 @@ def make_canon_layer(hidden_size: int,
                         x = ACT2FN[self.activation](x).to(dtype=dtype)
                 return x.unsqueeze(1), cache
 
+            def reset_parameters(self):
+                init_mode = getattr(self, '_canon_init', 'zeros')
+                if init_mode == 'zeros':
+                    with torch.no_grad():
+                        nn.init.zeros_(self.weight)
+                        if self.bias is not None:
+                            nn.init.zeros_(self.bias)
+                elif init_mode == 'default':
+                    # Use standard nn.Conv1d initialization (kaiming_uniform_)
+                    nn.Conv1d.reset_parameters(self)
+                elif init_mode == 'const_var':
+                    # Initialize all weights to 1/sqrt(kernel_size) to preserve variance of each dimension
+                    with torch.no_grad():
+                        nn.init.constant_(self.weight, 1.0 / (self.kernel_size[0] ** 0.5))
+                        if self.bias is not None:
+                            nn.init.zeros_(self.bias)
+                elif init_mode == 'const_var_sqr':
+                    with torch.no_grad():
+                        nn.init.constant_(self.weight, 1.0 / (self.kernel_size[0]))
+                        if self.bias is not None:
+                            nn.init.zeros_(self.bias)
+                elif init_mode == 'ones':
+                    with torch.no_grad():
+                        nn.init.ones_(self.weight)
+                        if self.bias is not None:
+                            nn.init.zeros_(self.bias)
+                else:
+                    raise ValueError(f"Unknown canon_init mode: {init_mode}")
+                # Reset learnable gamma if present
+                canon_gamma = getattr(self, '_canon_gamma', None)
+                if canon_gamma is not None:
+                    with torch.no_grad():
+                        canon_gamma.fill_(1.0)
+
             @property
             def state_size(self) -> int:
                 return self.hidden_size * self.kernel_size
@@ -202,7 +236,7 @@ def make_canon_layer(hidden_size: int,
 
 
 def create_canon(dim, config):
-    canon = make_canon_layer(dim, bias=config.canon_bias, kernel_size=config.canon_kernel, activation = 'silu' if config.canon_activation else None, use_fast_conv1d=config.canon_kernel in [2,3,4])
+    canon = make_canon_layer(dim, bias=config.canon_bias, kernel_size=config.canon_kernel, activation = 'silu' if config.canon_activation else None, use_fast_conv1d=getattr(config, 'use_fast_conv1d', False))
     #canon = make_canon_layer(dim, bias=config.canon_bias, kernel_size=config.canon_kernel, activation = 'silu' if config.canon_activation else None, use_fast_conv1d=False)
     if config.canon_bias: # and config.canon_bias_zero:
         canon.bias.data = torch.zeros_like(canon.bias)
@@ -230,6 +264,15 @@ def create_canon(dim, config):
     #         # bias should already be zero (if exist)
     # canon._zeyuan_no_reinit = True
     canon._zeyuan_residual = config.canon_residual
+    canon._canon_init = getattr(config, 'canon_init', 'zeros')
+    if not getattr(config, 'train_canon_weights', True):
+        canon.weight.requires_grad = False
+        if canon.bias is not None:
+            canon.bias.requires_grad = False
+    if getattr(config, 'canon_gamma', False):
+        canon._canon_gamma = nn.Parameter(torch.ones(dim))
+    else:
+        canon._canon_gamma = None
     return canon
 
 
@@ -252,5 +295,10 @@ def apply_canon(store_name, canon, hidden_states, cache, attention_mask):
         if conv_state_new is not conv_state:
             conv_state.copy_(conv_state_new)
             assert False, f"Canon cache {store_name} not updated correctly, expected {conv_state.shape}, got {conv_state_new.shape}"
-    if canon._zeyuan_residual: return hidden_states + hidden_states2
-    else: return hidden_states2
+    if canon._zeyuan_residual:
+        result = hidden_states + hidden_states2
+    else:
+        result = hidden_states2
+    if canon._canon_gamma is not None:
+        result = result * canon._canon_gamma
+    return result

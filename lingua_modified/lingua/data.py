@@ -739,6 +739,10 @@ class DataArgs:
     load_async: bool = True
     prefetch_size: int = 64
     tokenizer: TokenizerArgs = field(default_factory=TokenizerArgs)
+    n_workers: int = 8
+    pad_token: int = 0
+    no_train_label_token: int = -100
+    eval_dump_dir: Optional[str] = None
 
 
 def init_dataloader_state_from_args(

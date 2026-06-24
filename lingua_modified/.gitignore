@@ -2,4 +2,6 @@
 .vscode
 *.ipynb
 slurm-*.out
+data/*
 wandb
+.venv/*

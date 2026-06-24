@@ -1,0 +1,11 @@
+.env
+.DS_Store
+.vscode/*
+.cursor/*
+**/__pycache__/*
+physicslm4.egg-info/*
+**/venv/*
+**/node_modules/*
+plots/*
+**/node_modules/*
+**/venv/*

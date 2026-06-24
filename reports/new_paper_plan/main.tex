@@ -41,9 +41,8 @@ transformer block, as a running example.
 We find that these benchmarks require careful use: tasks differ substantially in
 stability, some are reliable across multiple runs and others volatile
 enough that the random seed alone can flip which architecture looks better.
-Despite this variability, the benchmarks remain a useful tool for studying the mechanistic differences between architectures, since internal training signatures reproduce across seeds even where final scores do not.
-Accounting for these pitfalls, we evaluate \Canon and find it improves reasoning performance consistently at every scale from 3M to 100M parameters.
-We then use the benchmarks to characterise \Canon's mechanistic signatures: it suppresses the deep-layer gradient dominance the baseline develops, is structurally biased toward integrating longer-range context from initialisation, amplifies residual-stream representations in the deep layers, and requires cross-token mixing to be effective. Removing it degrades performance below the baseline.
+Accounting for these pitfalls, we evaluate \Canon and find it improves reasoning performance consistently at every scale from 3M to 100M parameters, with the gain concentrated on the depth-of-reasoning tasks.
+We then ask whether the benchmarks can also explain \emph{why} \Canon helps. Coarse training signatures are seed-stable, but the more informative training dynamics on these tasks do not reproduce those of natural-language training, so we characterise \Canon's mechanism on text instead: it suppresses the deep-layer gradient dominance the baseline develops, amplifies residual-stream representations in the deep layers, is structurally biased toward integrating longer-range context from initialisation, and requires cross-token mixing to be effective: removing it degrades performance below the baseline. We distil these results into a recommended configuration.
 
 \end{adjustwidth}
 \end{abstract}
@@ -81,17 +80,19 @@ in doing so demonstrate how the benchmarks should be used.
         seed-to-seed variance of the final score concentrates almost entirely on the
         grokking tasks.
   \item Averaged over seeds and swept across model sizes, \Canon reaches lower loss than a
-        strong \Llama baseline at every scale from 3M to 100M parameters.
-  \item We use the benchmarks to study mechanism, since the training behaviour is
-        seed-stable even where the final score is not. We characterise \Canon's mechanistic
-        signatures: suppression of deep-layer gradient dominance, amplification of
-        residual-stream representations in deep layers, and a structural bias toward
-        integrating longer-range context present from initialisation.
-        Cross-token mixing is the essential ingredient: $k{=}1$ (no mixing) performs
-        \emph{worse} than the baseline, and the gain grows monotonically with kernel size.
-  \item We conclude that architectures should be ranked only after averaging over seeds
-        and scales, and that mechanism, which these benchmarks report reliably, is what
-        they are best used for.
+        strong \Llama baseline at every scale from 3M to 100M parameters, with the gain
+        concentrated on the depth-of-reasoning tasks.
+  \item We test whether the benchmarks can also explain \emph{why} \Canon helps. Coarse
+        training signatures (e.g.\ the deep/shallow gradient ratio) are seed-stable, but the
+        more informative training dynamics on these tasks differ from those of text training,
+        so we study mechanism on text. There, \Canon suppresses deep-layer gradient
+        dominance, amplifies deep-layer representations, and is biased toward longer-range
+        context from initialisation; cross-token mixing is essential ($k{=}1$ performs
+        \emph{worse} than the baseline, and the gain grows monotonically with kernel size).
+  \item We distil the ablations into a recommended configuration (\Canon-AC with
+        kernel size $k{=}4$, robust to the initialisation scheme) and conclude that
+        architectures on this suite should be ranked only after averaging over seeds and
+        scales, while mechanistic study is more reliable on text.
 \end{itemize}
 
 \section{Background and Problem Statement}
@@ -138,9 +139,13 @@ edges-list and an adjacency-list form, which we treat as separate tasks. The sta
 training signal is the 8-task mix: the four core tasks in both encodings.
 
 \paragraph{Configuration.}
-Unless stated otherwise the default model has 30M parameters (8 layers, width 512), uses
-kernel size $k=4$ at all four positions, and trains on the 8-task mix. For the scaling
-study we train at 3M, 10M, 30M, and 100M parameters with five seeds per
+We train in a modified Meta Lingua framework, with the Canon convolution implemented through
+the \texttt{Dao-AILab/causal-conv1d} CUDA kernel. \Canon and \Llama are matched in width,
+depth, optimiser, data, and token budget. Unless stated otherwise the default model has 30M
+parameters (8 layers, width 512), uses kernel size $k=4$ at all four positions, and trains
+on the 8-task mix. We optimise with AdamW (learning rate $3\!\times\!10^{-4}$, cosine
+schedule, $\beta_1{=}0.9$, $\beta_2{=}0.98$, $\epsilon{=}10^{-6}$) for 100k steps. For the
+scaling study we train at 3M, 10M, 30M, and 100M parameters with five seeds per
 (architecture, size) cell. The single metric we use for cross-architecture comparison is
 the held-out language-modelling loss (\texttt{loss/out}); per-task accuracies are used for
 the task-level breakdowns.
@@ -262,12 +267,125 @@ available.
   \label{fig:depth}
 \end{figure}
 
-\subsection{Canon Configuration: What Matters and What Does Not}
+\subsection{From Synthetic Benchmarks to Text: Where Mechanism Can Be Studied}
+\label{sec:mechanism}
+
+The seed-averaged ranking settles whether \Canon helps but not why. A natural next step is
+to read \Canon's mechanism off the synthetic suite directly: even if the final score on a
+grokking task is seed-unreliable (Section~\ref{sec:reliability}), the model's internal
+training dynamics might be more stable. We find this hope is only partly borne out, which
+leads us to study mechanism on text instead.
+
+\paragraph{Some coarse signatures reproduce.}
+The deep/shallow gradient ratio is seed-stable on the synthetic tasks: where the final \Depo
+score swings seed to seed, the trajectory of this ratio is reproducible, with the \Canon
+seeds held low and tightly bundled and the \Llama seeds drifting upward, the two bundles
+never crossing (Figure~\ref{fig:mech_hope}, left). This synthetic signature also agrees
+qualitatively with the same measurement on text (Figure~\ref{fig:mech_hope}, right), which
+is encouraging: a coarse statistic about gradient flow transfers between the two regimes.
+
+\begin{figure}[t]
+  \centering
+  \begin{subfigure}{0.49\textwidth}
+    \includegraphics[width=\linewidth]{grad_ratio_seeds.png}
+    \caption{Synthetic, one line per seed.}
+  \end{subfigure}\hfill
+  \begin{subfigure}{0.49\textwidth}
+    \includegraphics[width=\linewidth]{grad_ratio.png}
+    \caption{Text.}
+  \end{subfigure}
+  \caption{\textbf{A coarse signature that does transfer.} Deep/shallow gradient ratio over
+  training. On the synthetic tasks (left) it is seed-stable, with the \Canon and \Llama seeds
+  forming two non-overlapping bundles even though the final \Depo score varies seed to seed, and
+  it agrees qualitatively with the same measurement on text (right).}
+  \label{fig:mech_hope}
+\end{figure}
+
+\paragraph{The informative signatures do not.}
+The more detailed mechanistic signatures, however, do not transfer. The per-layer gradient
+profile and the residual-stream RMS ratio look qualitatively different on the synthetic
+tasks than on text (Figure~\ref{fig:synth_vs_text}): the synthetic dynamics are dominated by
+the grokking transition and lack the clean across-depth structure visible in text. Drawing
+mechanistic conclusions from the synthetic runs is therefore unreliable. We accordingly study
+\Canon's mechanism on text, where the dynamics are stable and reproducible, and reserve the
+synthetic suite for the reliability and ranking results above.
+
+\begin{figure}[t]
+  \centering
+  \begin{subfigure}{0.24\textwidth}
+    \includegraphics[width=\linewidth]{grad_profile_synth.png}
+    \caption{Profile, synthetic.}
+  \end{subfigure}\hfill
+  \begin{subfigure}{0.24\textwidth}
+    \includegraphics[width=\linewidth]{grad_profile.png}
+    \caption{Profile, text.}
+  \end{subfigure}\hfill
+  \begin{subfigure}{0.24\textwidth}
+    \includegraphics[width=\linewidth]{rms_ratio_synth.png}
+    \caption{RMS ratio, synthetic.}
+  \end{subfigure}\hfill
+  \begin{subfigure}{0.24\textwidth}
+    \includegraphics[width=\linewidth]{rms_ratio.png}
+    \caption{RMS ratio, text.}
+  \end{subfigure}
+  \caption{\textbf{The informative dynamics do not reproduce on the benchmarks.} The
+  per-layer gradient profile and the residual-stream RMS ratio differ qualitatively between
+  the synthetic tasks and text. Because the synthetic dynamics are dominated by grokking,
+  we study \Canon's mechanism on text.}
+  \label{fig:synth_vs_text}
+\end{figure}
+
+\subsubsection{Across-Layer Training Dynamics on Text}
+
+On text, \Canon leaves two reproducible across-layer signatures
+(Figure~\ref{fig:synth_vs_text}, right panels). First, \emph{gradient smoothing}: \Llama
+develops a strong deep-layer gradient dominance over training, with deep layers increasingly
+dominating the gradient signal, whereas \Canon suppresses this effect and distributes the
+per-layer gradient profile more evenly across depth. Second, \emph{representation upscaling}:
+the \Canon convolution amplifies the residual stream, with the convolution output/input RMS
+ratio exceeding one most strongly in the deep layers near the language-modelling head. Both
+changes resemble the effect of scaling the model up, and are consistent with the gain being
+concentrated on the depth-of-reasoning tasks.
+
+\subsubsection{Cross-Token Mixing Is the Essential Ingredient}
+
+Setting $k{=}1$ removes cross-token mixing while preserving all other \Canon parameters;
+this configuration performs \emph{worse} than the \Llama baseline, and loss improves
+monotonically as $k$ increases from 2 to 6 (Figure~\ref{fig:flow}). Cross-token mixing is
+the necessary ingredient, not the additional parameters. The learned weights place more mass
+on farther-back shifts than on the current token from the first checkpoint, and the mixing
+is strongest in the early layers (lowest output/input cosine similarity). \Canon is therefore
+structurally biased toward integrating context from earlier tokens, a property present from
+initialisation rather than acquired gradually.
+
+\begin{figure}[t]
+  \centering
+  \begin{subfigure}{0.33\textwidth}
+    \includegraphics[width=\linewidth]{kernel.png}
+    \caption{$k{=}1$ (no mixing) is worse than baseline.}
+  \end{subfigure}\hfill
+  \begin{subfigure}{0.33\textwidth}
+    \includegraphics[width=\linewidth]{canon_weights.png}
+    \caption{Weights favour farther-back tokens.}
+  \end{subfigure}\hfill
+  \begin{subfigure}{0.33\textwidth}
+    \includegraphics[width=\linewidth]{cos_sim.png}
+    \caption{Most mixing in early layers.}
+  \end{subfigure}
+  \caption{\textbf{Cross-token mixing is the necessary ingredient.} $k{=}1$ (no mixing)
+  performs worse than the baseline; loss improves monotonically with kernel size. The
+  learned weights favour farther-back tokens from initialisation, with the strongest
+  mixing in early layers.}
+  \label{fig:flow}
+\end{figure}
+
+\subsection{Recommended Configuration}
 \label{sec:ablations}
 
-The previous section establishes that \Canon helps, but not which parts of its
-configuration are responsible. We examine two design choices that are easy to vary: where
-the convolution is inserted and how its weights are initialised.
+Having established that the mechanism is best studied on text, we ablate on text the two
+remaining design choices that are easy to vary: where the convolution is inserted and how its
+weights are initialised. Together with the kernel-size sweep above, these ablations yield a
+recommended configuration.
 
 \paragraph{Insertion positions: A and C are sufficient.}
 A transformer block offers four insertion points (A through D, as described in
@@ -295,99 +413,19 @@ does not depend on the initialisation choice.
     \includegraphics[width=\linewidth]{initialization.png}
     \caption{All init schemes beat the baseline.}
   \end{subfigure}
-  \caption{\textbf{\Canon configuration ablations.} Positions A and C (pre-attention and
+  \caption{\textbf{\Canon configuration ablations (text).} Positions A and C (pre-attention and
   pre-FFN) capture the full gain; B and D are droppable. All initialisation schemes
   outperform the \Llama baseline, including zero initialisation; the benefit is
   structurally inherent to the convolution, not to the choice of starting weights.}
   \label{fig:ablations}
 \end{figure}
 
-\subsection{Mechanistic Signatures of \Canon}
-\label{sec:mechanism}
-
-The averaged ranking settles whether \Canon helps but not why. Section~\ref{sec:reliability}
-supplies the tool: although the final loss varies seed to seed on the grokking tasks, the
-changes an architecture makes during training (the distribution of gradients across depth,
-the scale of representations, the structure of the learned convolution weights) reproduce
-across seeds. A few runs already expose how two architectures differ mechanistically. The
-deep/shallow gradient ratio makes this concrete: where the final \Depo score swings seed to
-seed, the trajectory of this ratio is reproducible (Figure~\ref{fig:mech_seeds}). The \Canon
-seeds hold it low and tightly bundled throughout training, while the \Llama seeds both drift
-upward, and the two bundles never cross. Even where the benchmark cannot rank the two models,
-it offers a seed-stable window into how they differ internally. We examine these signatures
-and then probe which structural property of the convolution is essential to the gain.
-
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=0.6\textwidth]{grad_ratio_seeds.png}
-  \caption{\textbf{Mechanism is reproducible where the score is not.} Deep/shallow gradient
-  ratio over training, one line per seed. The \Canon seeds (held low and tightly bundled) and
-  the \Llama seeds (drifting upward) form two non-overlapping bundles, even though the final
-  \Depo score varies seed to seed within each architecture.}
-  \label{fig:mech_seeds}
-\end{figure}
-
-\subsubsection{Across-Layer Training Dynamics}
-
-\Llama develops a strong deep-layer gradient dominance over training, with deep layers
-increasingly dominating the gradient signal; \Canon suppresses this effect
-(Figure~\ref{fig:dynamics}). \Canon also amplifies residual-stream representations most
-strongly in the deep layers near the language-modelling head, and distributes the per-layer
-gradient profile more evenly across depth. These signatures are consistent across seeds
-and reliably describe how \Canon reshapes the model's internal computations.
-
-\begin{figure}[t]
-  \centering
-  \begin{subfigure}{0.33\textwidth}
-    \includegraphics[width=\linewidth]{grad_ratio.png}
-    \caption{Deep/shallow gradient ratio.}
-  \end{subfigure}\hfill
-  \begin{subfigure}{0.33\textwidth}
-    \includegraphics[width=\linewidth]{rms_ratio.png}
-    \caption{Residual-stream RMS ratio.}
-  \end{subfigure}\hfill
-  \begin{subfigure}{0.33\textwidth}
-    \includegraphics[width=\linewidth]{grad_profile.png}
-    \caption{Per-layer gradient profile.}
-  \end{subfigure}
-  \caption{\textbf{\Canon's across-layer reorganization signature.} \Canon suppresses the
-  deep-layer gradient dominance that \Llama develops, amplifies deep-layer representations,
-  and distributes the per-layer gradient profile more evenly, changes that resemble the
-  effect of scaling the model up.}
-  \label{fig:dynamics}
-\end{figure}
-
-\subsubsection{Cross-Token Mixing Is the Essential Ingredient}
-
-Setting $k{=}1$ removes cross-token mixing while preserving all other \Canon parameters;
-this configuration performs \emph{worse} than the \Llama baseline, and loss improves
-monotonically as $k$ increases from 2 to 6 (Figure~\ref{fig:flow}). Cross-token mixing is
-the necessary ingredient, not the additional parameters. The learned weights place more mass
-on farther-back shifts than on the current token from the first checkpoint, and the mixing
-is strongest in the early layers. \Canon is therefore structurally biased toward integrating
-context from earlier tokens, a property present from initialisation rather than acquired
-gradually.
-
-\begin{figure}[t]
-  \centering
-  \begin{subfigure}{0.33\textwidth}
-    \includegraphics[width=\linewidth]{kernel.png}
-    \caption{$k{=}1$ (no mixing) is worse than baseline.}
-  \end{subfigure}\hfill
-  \begin{subfigure}{0.33\textwidth}
-    \includegraphics[width=\linewidth]{canon_weights.png}
-    \caption{Weights favour farther-back tokens.}
-  \end{subfigure}\hfill
-  \begin{subfigure}{0.33\textwidth}
-    \includegraphics[width=\linewidth]{cos_sim.png}
-    \caption{Most mixing in early layers.}
-  \end{subfigure}
-  \caption{\textbf{Cross-token mixing is the necessary ingredient.} $k{=}1$ (no mixing)
-  performs worse than the baseline; loss improves monotonically with kernel size. The
-  learned weights favour farther-back tokens from initialisation, with the strongest
-  mixing in early layers.}
-  \label{fig:flow}
-\end{figure}
+\paragraph{Recommendation.}
+The ablations converge on a single recommended setting: \textbf{\Canon-AC with kernel size
+$k{=}4$ and the default initialisation}. Positions A and C recover the full gain of the
+four-point configuration at half the convolutions; $k{=}4$ saturates the kernel-size benefit
+(larger kernels add little, while $k{=}1$ is worse than no \Canon at all); and the benefit is
+robust to the initialisation scheme.
 
 \section{Discussion}
 
@@ -404,11 +442,13 @@ seeds and reflect how the convolution reshapes the model's internal computation.
 These benchmarks mislead when read one seed at a time, because grokking makes a single training
 curve on the volatile tasks largely a function of the seed. The fix for ranking claims is
 to average over seeds and sweep scale; it is simple but not optional, and which tasks
-demand it is not obvious a priori. The benchmarks also report two things with very
-different reliability: the final score on a grokking task is a weak signal, while the
-training dynamics reproduce even where the score does not. The benchmarks are therefore
-better used to study mechanism, with the seed-averaged score serving as a coarse sanity
-check rather than the object of study.
+demand it is not obvious a priori. The benchmarks are also limited as a tool for mechanistic
+interpretation: while coarse training signatures such as the deep/shallow gradient ratio
+reproduce across seeds and agree with text, the more informative dynamics (the per-layer
+gradient profile and residual-stream scaling) are dominated by the grokking transition and do
+not match text training. Mechanistic conclusions are therefore more reliably drawn on text,
+with the synthetic suite used for reliability-aware ranking rather than as the object of
+mechanistic study.
 
 \paragraph{Limitations and future work.}
 Our mechanistic evidence is observational: the signatures we document are descriptive and
